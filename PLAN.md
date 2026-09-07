@@ -1,0 +1,231 @@
+# Plan: Capacity Planning Forecaster
+
+**Written:** 2026-09-07. **Status:** plan only, nothing built.
+
+**Build:** two weeks, Jul 19 to Aug 1 2027, overlapping 10's last week and slack as the
+sequence already assumes (five build-weeks in July). **Package:** `headroom`. **Fed by:**
+nothing in the portfolio. **Feeds:** nothing; reuses 01's static decision-app pattern.
+
+This project calls no language model, so neither the 04 gateway nor the 03 gate is on its
+path. Every number below comes from a rolling-origin backtest with block-bootstrap
+intervals over forecast origins. It is the shortest project in the plan and the one whose
+seniority signal per week is highest: forecasting portfolios report a point-estimate MAE
+and stop; this one reports whether the intervals held when the world changed, whether the
+sites sum to the region, and what the forecast means for the rota.
+
+> **Employer note.** The vocabulary comes from years of provincial health analytics; the
+> data does not. Public emergency-services and hospital demand series from other
+> jurisdictions only; nothing internal, no employer series.
+
+---
+
+## 1. What this produces
+
+Demand forecasts, emergency medical calls by borough rolling up to a city and emergency
+department attendances by trust rolling up to regions, with uncertainty ranges that hold
+their stated coverage through a distribution shift, reconciled so the parts sum to the
+whole, and turned into a staffing number at a chosen service level with the cost of being
+wrong in either direction made explicit.
+
+The numbers a stranger can check:
+
+| Number | What it shows |
+|---|---|
+| CRPS and pinball loss at each quantile, per method per hierarchy level, as skill relative to seasonal naive, 95% block-bootstrap CIs over origins | Whether anything beat the baseline that any practitioner would try first |
+| **Empirical coverage at 80, 90 and 95% nominal in a rolling 90-day window through the 2020 shift**, adaptive conformal against split conformal and against the models' own quantiles | The headline chart: intervals that hold when conditions change |
+| Interval width alongside coverage | Coverage bought by width is not a result |
+| Reconciliation: coherence error after MinT (must be zero to numerical precision) and the change in CRPS at each level from reconciling | Sites sum to the region, and reconciling helped or hurt, said which |
+| Realised staffing cost per method at three service levels against an oracle that knew demand, from the backtest | The forecast as a rota decision, priced |
+| Neural against statistical: paired CRPS difference of N-HiTS and PatchTST against the best statistical model, per level and per horizon, with CIs, and training time | Where the neural model earned its complexity and where it did not |
+| Compute time per method for the full backtest | What the accuracy costs in minutes |
+
+## 2. Design decisions
+
+### 2.1 One dataset done fully right, a second if time allows
+
+Primary: New York City emergency medical dispatch incidents, an open dataset of tens of
+millions of timestamped incidents since 2005 with borough and dispatch area, aggregated to
+daily counts. It gives a two-level hierarchy (city, borough, dispatch area), twenty years
+of daily data, weekly and annual seasonality, and real shifts: the 2012 storm, the March
+2020 surge. Secondary, optional: NHS England monthly emergency-department attendances by
+provider, which tests reconciliation with hundreds of leaf nodes and carries the same 2020
+shift at monthly resolution. The plan is complete with the primary alone.
+
+### 2.2 Baselines first, honestly
+
+Seasonal naive, then ETS, Theta, AutoARIMA and MSTL for the double seasonality, all
+through StatsForecast with prediction quantiles. Every later number is reported as skill
+relative to seasonal naive. A project that skips this is not credible to anyone who has
+forecast for a living.
+
+### 2.3 Probabilistic scoring only
+
+CRPS computed from the quantile set, pinball loss per quantile, coverage and width. MAE is
+reported in a footnote for readers who look for it, never as the headline, and Rule C
+candidate 2 shows what choosing a model by MAE would have done.
+
+### 2.4 Adaptive conformal, with the assumption stated
+
+Exchangeability does not hold for time series, so split conformal is expected to fail
+through the shift and is kept as the comparison. The main method is adaptive conformal
+inference (the online update of the miscoverage level from realised coverage), with an
+aggregated-expert variant to remove the step-size choice, applied to each model's point or
+median forecast per series and horizon. The assumption made (the update tracks the
+recent miscoverage; coverage is guaranteed on average over time, not per period) is stated
+in the README next to the chart, not glossed.
+
+### 2.5 Reconciliation that keeps the distribution
+
+MinT reconciliation with shrinkage on point forecasts through the hierarchical forecasting
+library, then a probabilistic reconciliation (bootstrap of reconciled in-sample errors) so
+the quantiles are coherent too. Coherence is verified numerically at every origin.
+Conformal intervals are fitted on the reconciled forecasts, so the coverage claim is made
+about the numbers a planner would actually use.
+
+### 2.6 The decision layer is a newsvendor
+
+Staffing at a chosen service level is the demand quantile at that level divided by a
+stated demand-per-staff ratio, with the under-staffing and over-staffing costs stated as
+inputs. The newsvendor result gives the optimal quantile as the ratio of those costs, so
+the service level a planner chooses is shown next to the one the costs imply. The
+backtest realises each method's staffing decision against actual demand and sums the cost,
+against an oracle. Inputs are a table in the README so a reader substitutes their own.
+
+### 2.7 Neural models on CPU, named, and allowed to lose
+
+N-HiTS and PatchTST through NeuralForecast with a multi-quantile loss, trained as global
+models across the series on the laptop's CPU (small data; minutes per fit). The paired
+comparison against the best statistical model is per level and horizon with intervals. If
+the neural models do not beat the statistical ones at the leaf level, or only at the top,
+the README says exactly that. Judgement reads as seniority; "deep learning won" reads as
+naive.
+
+### 2.8 Out of scope, on purpose
+
+- Exogenous regressors (weather, holidays) beyond calendar features. Named in Deferred.
+- Intraday forecasting and shift-level rotas. Daily demand to daily staffing.
+- Any live service. The dashboard is static, built from the backtest's outputs.
+- The employer's or any Canadian provincial health series.
+
+## 3. Data
+
+| Source | Size | What it gives | Access and terms |
+|---|---|---|---|
+| NYC emergency medical dispatch incidents (open data) | Tens of millions of incidents, 2005 to 2027, with borough and dispatch area | Daily counts on a two-level hierarchy with real shifts | NYC Open Data terms; downloaded by the loader, aggregated locally, only aggregates committed |
+| NHS England monthly emergency department attendances by provider (optional) | About 200 providers by month since 2010 | Wide hierarchy at monthly resolution | Open Government Licence; loader handles format changes across years |
+| Calendar features (own) | | Day of week, public holidays for the jurisdiction | Own |
+
+Nothing raw is committed; loaders verify checksums; every licence is recorded.
+
+## 4. Architecture
+
+```
+headroom/
+  data/        nyc_ems.py (fetch, aggregate to daily by borough and dispatch area), nhs_ae.py (optional,
+               monthly by provider and region), calendar.py, checks.py (gaps, outliers, regime markers)
+  hierarchy/   spec.py (summing matrix), build.py
+  backtest/    origins.py (rolling origin, refit schedule), run.py, store.py (Parquet per method)
+  models/      baselines.py (seasonal naive), stats.py (ETS, Theta, AutoARIMA, MSTL via StatsForecast),
+               neural.py (N-HiTS, PatchTST via NeuralForecast, multi-quantile loss, CPU)
+  conformal/   split.py, aci.py (adaptive conformal inference), agaci.py (aggregated experts), apply.py
+  reconcile/   mint.py (point), probabilistic.py (bootstrap reconciliation), verify.py (coherence)
+  score/       crps.py, pinball.py, coverage.py (rolling window), width.py, skill.py, bootstrap.py (block, over origins)
+  decide/      newsvendor.py (optimal quantile from costs), staffing.py (quantile to staff), realised_cost.py
+  report/      tables.py, charts.py (fan charts, coverage through time, reconciliation, staffing), export.py
+               (JSON for the dashboard)
+  cli.py       headroom data build | backtest | conformal | reconcile | decide | report | export
+dashboard/     static site (HTML, a small chart library, precomputed JSON): fan charts by level, the coverage
+               chart, reconciliation view, a service-level slider that reads the staffing table;
+               Azure Static Web Apps at capacity.peterparker.ca
+docs/          data.md, methods.md (assumptions, incl. conformal under dependence), neural-verdict.md, decision.md
+```
+
+### Tests that matter
+
+The summing matrix reproduces every aggregate from its leaves; reconciled forecasts are
+coherent at every origin to numerical precision; CRPS from quantiles matches a closed-form
+check on a normal fixture; the adaptive conformal update tracks a synthetic shift in a
+fixture within the expected lag; block bootstrap respects origin ordering; the newsvendor
+quantile equals the cost ratio on fixtures; the dashboard JSON validates against a schema.
+
+## 5. Week by week
+
+| Dates | Built | Done when |
+|---|---|---|
+| Jul 19 to 25 | NYC loader, aggregation, checks, hierarchy; rolling-origin harness; baselines and statistical models with quantiles; CRPS, pinball, coverage, width, skill, block bootstrap; split and adaptive conformal; the coverage-through-shift chart | Skill table with CIs for every statistical method; coverage chart through March 2020 |
+| Jul 26 to Aug 1 | N-HiTS and PatchTST; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; dashboard exported and deployed; Rule C; README; `v0.1.0`; repository public | Every table in section 1 filled; dashboard live |
+
+First to drop if behind: the NHS dataset; PatchTST (N-HiTS stays as the named neural
+model); probabilistic reconciliation (point MinT with conformal on the reconciled series
+stays). The baselines, probabilistic scoring, coverage through the shift, reconciliation
+coherence, the decision layer and the neural verdict are not droppable.
+
+## 6. Cost
+
+Everything runs on the laptop's CPU: the statistical models in seconds per series, the
+neural models in minutes per fit on daily data of this size. The dashboard is static on a
+free tier. No model vendor is called.
+
+| Item | Basis | CA$ |
+|---|---|---:|
+| Compute | Laptop CPU | 0 |
+| Hosting | Azure Static Web Apps free tier; custom domain on the owned domain | 0 |
+| Data | Open datasets | 0 |
+| Reserve | A rented CPU box for a day if the full backtest with refits is too slow locally | 10 |
+| **Total** | | **10** |
+
+Well under the CA$25 line. Actuals go in the plan repository's STATUS next to the estimate.
+
+## 7. Handover
+
+`headroom` v0.1.0 on Aug 1 2027. Nothing imports it. The conformal and scoring modules are
+small and importable; the static decision-app pattern is 01's, reused. The coverage chart
+and the neural verdict are figures for the portfolio site.
+
+## 8. Risks
+
+| Risk | Handling |
+|---|---|
+| Two weeks is tight and cleaning is underestimated | One dataset with a single aggregation step; the NHS set is optional and the first thing dropped |
+| Conformal subtleties under dependence | Adaptive methods designed for it; the assumption and its guarantee stated in the README next to the chart; split conformal kept to show the failure |
+| The neural models win everywhere, or nowhere | Either is reported with intervals; the verdict document is written whichever way |
+| Reconciliation hurts leaf accuracy | Reported per level; MinT shrinkage parameter chosen on a validation window and stated |
+| The staffing numbers are taken as advice | Inputs are explicit and replaceable; the README says the ratio and costs are illustrative |
+| Open data terms | NYC Open Data and the Open Government Licence permit this use; recorded in `docs/data.md` |
+| Employer boundary | None. Other jurisdictions' public data; no provincial series |
+
+## 9. Rule C candidates
+
+1. **Split conformal through the shift.** Expected: coverage collapses in March 2020 and
+   recovers only when the calibration window rolls past it, while the adaptive method
+   tracks nominal within weeks. The rolling coverage chart is the evidence.
+2. **Choosing the model by MAE.** Expected: the MAE winner is not the CRPS winner on at
+   least one level, and its intervals are worse calibrated; the table shows the divergence.
+3. **A global neural model as the default forecaster.** Expected: competitive at the top
+   level, no better or worse than the statistical models at the leaves, at many times the
+   compute; this is the neural verdict itself.
+
+Whichever produces the clearest evidence becomes `docs/rejected.md`.
+
+## 10. Definition of done
+
+- [ ] Seasonal naive and statistical baselines reported first, with every later result as skill against them
+- [ ] CRPS and pinball loss per quantile, per method and level, with block-bootstrap CIs
+- [ ] Empirical coverage at three nominal levels plotted in a rolling window through the 2020 shift, adaptive against split conformal, with widths
+- [ ] Conformal assumptions stated in the README beside the chart
+- [ ] MinT and probabilistic reconciliation; coherence verified at every origin; effect on accuracy per level reported
+- [ ] Decision layer: staffing at a stated service level from the reconciled distribution; newsvendor quantile from stated costs; realised cost per method against an oracle
+- [ ] N-HiTS and PatchTST against the best statistical model, paired with CIs; `docs/neural-verdict.md` says where they did not earn their complexity
+- [ ] Static dashboard live at capacity.peterparker.ca
+- [ ] One rejected approach documented with evidence (Rule C)
+- [ ] Repository public, `v0.1.0` tagged
+
+## 11. Deferred
+
+| Deferred | Kept so the door stays open |
+|---|---|
+| Weather and event regressors | The models accept exogenous features; the loader has a calendar module to extend |
+| Intraday demand and shift-level rotas | Aggregation resolution is a parameter; the decision layer is per period whatever the period |
+| A live-updating forecast | The export produces the dashboard JSON; a scheduled run would republish it |
+| Additional jurisdictions | One loader each; the hierarchy spec is data-driven |
+| Cross-learning between hierarchies (NYC and NHS jointly) | Global models already take multiple series; a joint run is a configuration |
