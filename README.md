@@ -52,7 +52,7 @@ fan charts, the coverage chart and a service-level slider.
 
 ## Part of a portfolio
 
-One of ten projects built over twelve months. It reuses the static decision-app pattern
+One of fifteen projects built over twelve months. It reuses the static decision-app pattern
 from the Intervention Targeting Engine and is the portfolio's second Azure hosting example.
 
 ## How this was built
