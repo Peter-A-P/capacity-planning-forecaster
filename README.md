@@ -5,8 +5,10 @@ ranges that actually hold when conditions shift, turned into a staffing number a
 service level. Overstaffing costs money; understaffing costs patients. This puts a
 defensible number on both, site by site, rolling up to the region.
 
-**Status: planning.** Nothing has run yet. The plan is in [PLAN.md](PLAN.md): a two-week
-build in late July 2027 on public demand series, everything on a laptop CPU.
+**Status: building,** week 1 of two, started 2026-09-12. The plan is in
+[PLAN.md](PLAN.md): a two-week build on public demand series, everything on a laptop CPU.
+The data is loaded and checked ([docs/data.md](docs/data.md)); no forecast has been made
+yet, so the tables below are empty.
 
 ## Result
 

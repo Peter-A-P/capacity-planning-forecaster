@@ -1,0 +1,55 @@
+name: CI
+
+# One job for now: is the code correct and typed? Everything it runs is synthetic or in
+# memory, so it takes about a minute and no network.
+#
+# The tests that need NYC Open Data are marked `network` and are not run here. Socrata
+# rate-limits anonymous callers and a grouped query over twenty-one years takes an hour;
+# a CI job that depends on a third party's API being up and fast fails for reasons that
+# have nothing to do with the change being tested. The loader is covered by unit tests on
+# recorded response shapes instead, and `docs/data.md` records the numbers a real fetch
+# produced with the date it produced them.
+#
+# The backtest and the neural fits will arrive with the weeks that build them (PLAN.md
+# section 5); neither belongs on a four-core runner on every push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  checks:
+    name: ruff, mypy, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python 3.13 and the project
+        run: uv sync --all-groups --extra stats
+
+      - name: ruff (lint)
+        run: uv run ruff check .
+
+      - name: ruff (format)
+        run: uv run ruff format --check .
+
+      - name: mypy --strict
+        run: uv run mypy
+
+      - name: pytest
+        run: uv run pytest -q

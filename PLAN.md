@@ -1,10 +1,23 @@
 # Plan: Capacity Planning Forecaster
 
-**Written:** 2026-09-07. **Status:** plan only, nothing built.
+**Written:** 2026-09-07. **Status:** building, week 1 started 2026-09-12.
 
-**Build:** two weeks, Jul 19 to Aug 1 2027, overlapping 10's last week and slack as the
-sequence already assumes (five build-weeks in July). **Package:** `headroom`. **Fed by:**
-nothing in the portfolio. **Feeds:** nothing; reuses 01's static decision-app pattern.
+**Build:** two weeks, Sep 12 to Sep 25 2026. **Package:** `headroom`. **Fed by:** nothing
+in the portfolio. **Feeds:** nothing; reuses 01's static decision-app pattern.
+
+> **Moved forward at rev. 4, 2026-09-12.** The plan slotted this for Jul 19 to Aug 1
+> 2027. `docs/SEQUENCE.md` puts 08 in the independent set with 01 and 09, and section 1
+> above is why nothing had to wait: this project calls no model vendor, so neither the
+> 04 gateway nor the 03 gate is on its path, and its data is twenty-one years of
+> published history that does not need calendar time to accumulate. Brought forward on
+> Peter's decision; the two-week duration, the budget and the scope are unchanged.
+>
+> One deliverable moves out of the two weeks with it. The dashboard reuses 01's static
+> decision-app pattern, and 01 builds that in its own week 7 (Oct 19 to 25 2026). Rather
+> than invent the pattern here and have 01 inherit it, the dashboard is held until 01
+> has it. Week 2 below ships everything else, and the dashboard and `v0.1.0` follow after
+> Oct 25. Section 10's definition of done is unchanged; the dashboard box is simply the
+> last one ticked.
 
 This project calls no language model, so neither the 04 gateway nor the 03 gate is on its
 path. Every number below comes from a rolling-origin backtest with block-bootstrap
@@ -43,11 +56,15 @@ The numbers a stranger can check:
 
 ### 2.1 One dataset done fully right, a second if time allows
 
-Primary: New York City emergency medical dispatch incidents, an open dataset of tens of
-millions of timestamped incidents since 2005 with borough and dispatch area, aggregated to
-daily counts. It gives a two-level hierarchy (city, borough, dispatch area), twenty years
-of daily data, weekly and annual seasonality, and real shifts: the 2012 storm, the March
-2020 surge. Secondary, optional: NHS England monthly emergency-department attendances by
+Primary: New York City emergency medical dispatch incidents, an open dataset of thirty
+million timestamped incidents since 2005 with borough and dispatch area, aggregated to
+daily counts. It gives a two-level hierarchy (city, borough, dispatch area), twenty-one
+years of daily data, weekly and annual seasonality, and real shifts: the 2012 storm, the
+March 2020 surge. Loaded 2026-09-12: 37 nodes over 31 dispatch areas, five boroughs and
+the city, 7,851 days from 2005-01-01 to 2026-06-30, no missing day. The eight busiest
+days in the whole record fall between 2020-03-26 and 2020-04-06, so the shift the
+coverage chart is built around is unmistakably there. `docs/data.md` has every number
+and the cost of every cleaning decision. Secondary, optional: NHS England monthly emergency-department attendances by
 provider, which tests reconciliation with hundreds of leaf nodes and carries the same 2020
 shift at monthly resolution. The plan is complete with the primary alone.
 
@@ -111,7 +128,7 @@ naive.
 
 | Source | Size | What it gives | Access and terms |
 |---|---|---|---|
-| NYC emergency medical dispatch incidents (open data) | Tens of millions of incidents, 2005 to 2027, with borough and dispatch area | Daily counts on a two-level hierarchy with real shifts | NYC Open Data terms; downloaded by the loader, aggregated locally, only aggregates committed |
+| NYC emergency medical dispatch incidents (open data) | 29,977,935 incidents, 2005-01-01 to 2026-06-30, with borough and dispatch area (measured 2026-09-12) | Daily counts on a two-level hierarchy with real shifts | NYC Open Data terms; aggregated by the loader before anything is stored, only aggregates committed. `docs/data.md` |
 | NHS England monthly emergency department attendances by provider (optional) | About 200 providers by month since 2010 | Wide hierarchy at monthly resolution | Open Government Licence; loader handles format changes across years |
 | Calendar features (own) | | Day of week, public holidays for the jurisdiction | Own |
 
@@ -152,8 +169,9 @@ quantile equals the cost ratio on fixtures; the dashboard JSON validates against
 
 | Dates | Built | Done when |
 |---|---|---|
-| Jul 19 to 25 | NYC loader, aggregation, checks, hierarchy; rolling-origin harness; baselines and statistical models with quantiles; CRPS, pinball, coverage, width, skill, block bootstrap; split and adaptive conformal; the coverage-through-shift chart | Skill table with CIs for every statistical method; coverage chart through March 2020 |
-| Jul 26 to Aug 1 | N-HiTS and PatchTST; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; dashboard exported and deployed; Rule C; README; `v0.1.0`; repository public | Every table in section 1 filled; dashboard live |
+| Sep 12 to 18 2026 | NYC loader, aggregation, checks, hierarchy; rolling-origin harness; baselines and statistical models with quantiles; CRPS, pinball, coverage, width, skill, block bootstrap; split and adaptive conformal; the coverage-through-shift chart | Skill table with CIs for every statistical method; coverage chart through March 2020 |
+| Sep 19 to 25 2026 | N-HiTS and PatchTST; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; Rule C; README | Every table in section 1 filled |
+| After Oct 25 2026 | Dashboard exported and deployed on 01's static pattern; `v0.1.0`; repository public | Dashboard live |
 
 First to drop if behind: the NHS dataset; PatchTST (N-HiTS stays as the named neural
 model); probabilistic reconciliation (point MinT with conformal on the reconciled series
@@ -178,7 +196,7 @@ Well under the CA$25 line. Actuals go in the plan repository's STATUS next to th
 
 ## 7. Handover
 
-`headroom` v0.1.0 on Aug 1 2027. Nothing imports it. The conformal and scoring modules are
+`headroom` v0.1.0 once the dashboard ships, after 2026-10-25. Nothing imports it. The conformal and scoring modules are
 small and importable; the static decision-app pattern is 01's, reused. The coverage chart
 and the neural verdict are figures for the portfolio site.
 

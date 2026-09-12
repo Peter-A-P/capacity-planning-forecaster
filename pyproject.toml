@@ -1,0 +1,137 @@
+[build-system]
+requires = ["hatchling>=1.25,<2.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "headroom"
+version = "0.1.0.dev0"
+description = "Capacity Planning Forecaster: hierarchical probabilistic demand forecasts with adaptive conformal intervals, reconciled and turned into a staffing number"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+authors = [{ name = "Peter Parker" }]
+keywords = [
+  "forecasting", "probabilistic-forecasting", "conformal-prediction",
+  "hierarchical-forecasting", "capacity-planning", "newsvendor",
+]
+
+# Every pin is a major-version ceiling. These libraries break API across majors and the
+# results tables have to reproduce years from now; the floor is the oldest version whose
+# API this code actually uses.
+dependencies = [
+  "polars>=1.9,<2.0",        # the internal data layer everywhere; 1.x API is stable, 0.x was not
+  "numpy>=2.1,<3.0",         # arrays at every model and scoring boundary
+  "scipy>=1.14,<2.0",        # the closed-form CRPS check and the newsvendor quantile tests
+  "pyarrow>=17.0,<23.0",     # Parquet for the backtest store; polars writes through it and
+                             # pandas reads it at the StatsForecast boundary
+  "pandas>=2.2,<3.0",        # library boundary only (Nixtla speaks pandas); never the internal format
+  "httpx>=0.27,<1.0",        # the NYC loader's paged SoQL fetch; pre-1.0, so the ceiling is 1.0
+  "typer>=0.15,<1.0",        # the headroom CLI; pre-1.0 so the ceiling is the next minor-as-major
+  "matplotlib>=3.9,<4.0",    # coverage, fan and reconciliation charts written to disk, no interactive backend
+]
+
+[project.optional-dependencies]
+# Arrives with the weeks that need it (PLAN.md section 5). Kept out of the default install
+# so that reproducing the baseline and conformal tables stays a small download: torch alone
+# is an order of magnitude larger than everything above put together.
+stats = [
+  "statsforecast>=2.0,<3.0",        # seasonal naive, ETS, Theta, AutoARIMA, MSTL with prediction quantiles.
+                                    # 2.x is the first line whose quantile output is a stable public API.
+  "hierarchicalforecast>=1.0,<2.0", # MinT with shrinkage and the summing-matrix utilities
+]
+neural = [
+  "neuralforecast>=3.0,<4.0",       # N-HiTS and PatchTST as named global models with a multi-quantile loss
+  "torch>=2.5,<3.0",                # CPU only; no GPU is bought for this project
+]
+
+[project.scripts]
+headroom = "headroom.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/Peter-A-P/capacity-planning-forecaster"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9.0",
+  "pytest-cov>=6.0,<8.0",
+  "mypy>=1.13,<2.0",
+  "ruff>=0.8,<1.0",
+  "pandas-stubs>=2.2,<3.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/headroom"]
+
+[tool.ruff]
+line-length = 96
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W",   # pycodestyle
+  "F",        # pyflakes
+  "I",        # import sorting
+  "N",        # pep8-naming
+  "UP",       # pyupgrade
+  "B",        # bugbear
+  "A",        # builtin shadowing
+  "C4",       # comprehensions
+  "PT",       # pytest style
+  "SIM",      # simplify
+  "PTH",      # pathlib over os.path
+  "RUF",      # ruff-specific
+  "ANN",      # every signature annotated; the typed-throughout bar
+  "D",        # docstrings
+]
+ignore = [
+  "D107",     # __init__ docstring; the class docstring covers it
+  "D203",     # incompatible with D211
+  "D213",     # incompatible with D212
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test names are the documentation here: a name like
+# "test_split_conformal_loses_coverage_through_the_shift" says more than a docstring would,
+# and annotating every fixture argument adds noise without adding a check mypy is not
+# already making.
+"tests/*" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "D100", "D101", "D102", "D103"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+disallow_any_unimported = true
+files = ["src", "tests"]
+# The test files have no __init__.py, so without this mypy names them "test_hierarchy"
+# rather than "tests.test_hierarchy" and the per-module override below never matches.
+mypy_path = "src"
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+# Tests keep every other strict check, including the one that catches an import of a name
+# a module does not export. What they drop is the requirement to annotate each test
+# function and each fixture argument: the annotation would be `-> None` and the fixture's
+# own declared type, neither of which can be wrong in a way that matters.
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+# No type stubs published, and vendoring stubs for them would rot faster than it helps.
+module = [
+  "matplotlib.*", "statsforecast.*", "neuralforecast.*", "hierarchicalforecast.*",
+  "scipy.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+  "network: fetches from NYC Open Data; skipped unless --run-network",
+  "slow: a full-size fit or a whole backtest; skipped unless --run-slow",
+]
