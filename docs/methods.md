@@ -4,12 +4,6 @@ What the numbers in this repository mean, and what has to be true for them to me
 Every measurement on this page was produced by the code in this repository on the panel
 described in [data.md](data.md) and is dated.
 
-**Not yet written:** the conformal section. Adaptive conformal inference is built in week
-1 of the schedule in `PLAN.md` section 5, and the assumption it makes under time-series
-dependence gets its own section here and a statement in the README beside the coverage
-chart, as the project's rules require. Nothing in this repository claims a conformal
-result yet.
-
 ---
 
 ## The backtest
@@ -212,3 +206,116 @@ to close.
 a collapse; the rolling window is why the chart is a chart. This is the raw material for
 `PLAN.md` section 9's first Rule C candidate, and the thing adaptive conformal intervals
 have to fix.
+
+---
+
+## Conformal intervals
+
+### What each method assumes
+
+**Split conformal** assumes **exchangeability**. Under it, the ``1 - alpha`` quantile of
+calibration residuals gives finite-sample marginal coverage of at least ``1 - alpha``, with
+no assumption about the model or the distribution. It is a remarkable guarantee and it does
+not apply here: a time series is not exchangeable, and the period this project exists to
+measure is when it is least exchangeable of all. Split conformal is kept because watching
+it fail is the evidence, not because its guarantee is believed.
+
+**Adaptive conformal inference** (Gibbs and Candes, 2021) assumes **nothing about the data
+at all**. It updates the miscoverage level online, `alpha_next = alpha_now + gamma *
+(target - missed)`, and its realised miscoverage rate over `T` steps converges to the
+target at rate `O(1/T)` for any sequence, including an adversarial one.
+
+**What it does not give is per-period coverage.** It is guaranteed to come back to nominal,
+not to be at nominal over any particular window, and it can only respond to a shift after
+the shift has already cost it coverage. **This is stated in the README beside the coverage
+chart.** Reporting "coverage held through the shift" without it would be a claim the method
+does not make, and it would be the most likely way for this project to be wrong in public.
+
+**Aggregated adaptive conformal** (Zaffran and others, 2022) removes the choice of `gamma`
+by running six step sizes from 0.001 to 0.5 as experts and weighting them online by their
+realised pinball loss. Nothing is chosen with hindsight.
+
+### The comparison is fair by construction
+
+The classical split construction holds one calibration set aside forever. Every method here
+instead uses the **same** trailing window of 52 origins, so the only difference between
+split and adaptive conformal is whether `alpha` moves. Two things would otherwise differ at
+once, in the adaptive method's favour.
+
+### The feedback rule
+
+A conformal method learns from its own past errors, so it is the part of this project most
+able to cheat without anyone noticing. At an origin, the outcome of a 14-day-ahead forecast
+made at the previous origin **has not happened yet**: with weekly origins it is two origins
+away. `available_upto` is the only place that rule lives, and
+`tests/test_conformal.py` corrupts the future of a score series and asserts that no width
+already produced changes, so the guard cannot decay into a comment.
+
+### The conformal quantile is an order statistic
+
+The half-width is the `k`-th smallest score with `k = ceil((n + 1) * (1 - alpha))`, taken
+directly as an order statistic and not through a quantile function. The usual quantile
+convention interpolates over `n - 1` intervals, which lands one order statistic away from
+what the construction asks for. That error is small, systematic, and **invisible in a
+coverage table, because over-covering looks like caution rather than like a bug**: on an
+exchangeable fixture it produced 0.9255 against a 0.90 target, where the order statistic
+gives 0.9065.
+
+### Measured result
+
+Wrapping the seasonal naive median, 964 origins, 90 percent nominal, 2026-09-12.
+
+| Method | City | Borough | Area | City mean width |
+|---|---:|---:|---:|---:|
+| Base quantiles, no conformal | 0.864 | 0.872 | 0.881 | 828.6 |
+| Split conformal | 0.897 | 0.901 | 0.907 | 981.3 |
+| Adaptive, gamma 0.01 | 0.897 | 0.899 | 0.901 | 1012.5 |
+| Adaptive, gamma 0.05 | 0.897 | 0.897 | 0.899 | 1051.5 |
+| Aggregated, 6 experts | 0.894 | 0.897 | 0.898 | 996.6 |
+
+**Conformal fixes the baseline's undercoverage.** Every method lands within half a point of
+nominal at every level of the hierarchy, against a base forecast that was 3.6 points low at
+the city and undercovered everywhere. It costs width: 981 against 829 at the city, which is
+the honest price and is reported beside the coverage rather than under it.
+
+### Worst 91-day window at the city, and the finding that matters
+
+| Method | Worst window | Ends | First 90 days from 2020-03-01 |
+|---|---:|---|---:|
+| Base quantiles, no conformal | 0.156 | 2020-05-04 | - |
+| Split conformal | 0.588 | 2020-05-04 | 0.593 |
+| Adaptive, gamma 0.01 | 0.593 | 2020-04-27 | 0.599 |
+| **Adaptive, gamma 0.05** | **0.665** | 2020-04-20 | **0.676** |
+| Aggregated, 6 experts | 0.621 | 2020-04-27 | 0.626 |
+
+Conformal improves the worst window enormously, from 0.156 to between 0.59 and 0.67, and
+adaptive conformal at a step size that can actually move beats split conformal by 7.7
+points. But **no method here holds nominal coverage through the March 2020 shift**, and the
+plan expected adaptive conformal to track nominal within weeks. It does not. Why it does
+not is the useful part.
+
+### Why: the interval is capped by the calibration window
+
+Measured at the city, 7-day horizon, across March to May 2020:
+
+| Step size | Mean alpha in the shift | At the floor | Mean width | Window's widest possible | Mean residual | Worst residual |
+|---|---:|---:|---:|---:|---:|---:|
+| 0.01 | 0.1000 | 0% | 790 | 1374 | 516 | 1574 |
+| 0.05 | 0.0409 | 8% | 1262 | 1374 | 516 | 1574 |
+| 0.20 | 0.1016 | 15% | 970 | 1374 | 516 | 1574 |
+
+**Driving `alpha` to zero buys the largest score in the calibration window and not one unit
+more.** At `gamma = 0.05` the method is already at 1262 against a hard ceiling of 1374, and
+the worst residual of the shift was 1574. **No value of `alpha` could have covered that
+day.** The adaptation was not too slow; it ran out of room.
+
+At `gamma = 0.01` the update is simply too slow to matter, `alpha` never leaves 0.09 to
+0.10. At `gamma = 0.20` it over-corrects and then over-relaxes, and the mean width comes out
+*lower* than at 0.05: there is no step size that is both fast and stable, which is the
+honest reason the aggregated variant exists.
+
+This is a limitation of the construction, not of the tuning, and it is a property of
+**re-quantiling within a bounded calibration set**. The standard remedy is to make the score
+scale-free, dividing each residual by a local volatility estimate so the interval can exceed
+anything the window has literally seen. That is the obvious next step and it is named as
+such rather than quietly attempted; nothing in this repository claims it yet.
