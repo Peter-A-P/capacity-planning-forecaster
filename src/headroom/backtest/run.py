@@ -194,18 +194,21 @@ def run(
 
         crossed += crossing_rate(raw)
         quantiles = sort_quantiles(raw)
-        scoring_q = quantiles[..., scoring_at]
-        reporting_q = quantiles[..., reporting_at]
-
-        i = origin.number
-        crps[i] = crps_from_quantiles(scoring_q, actual, scoring)
-        pinball[i] = pinball_by_level(reporting_q, actual, reporting)
-        absolute[i] = mae(reporting_q[..., reporting.size // 2], actual)
-        kept[i] = reporting_q
-        for j, coverage in enumerate(nominal):
-            lower, upper = interval_bounds(reporting_q, reporting, coverage)
-            hits[i, :, :, j] = covered(lower, upper, actual)
-            widths[i, :, :, j] = width(reporting_q, reporting, coverage)
+        _score_one_origin(
+            origin.number,
+            quantiles[..., scoring_at],
+            quantiles[..., reporting_at],
+            actual,
+            scoring,
+            reporting,
+            nominal,
+            crps,
+            pinball,
+            absolute,
+            kept,
+            hits,
+            widths,
+        )
 
     return Scores(
         model=name,
@@ -241,4 +244,142 @@ def _merge_grids(
         combined,
         np.searchsorted(combined, scoring).astype(np.intp),
         np.searchsorted(combined, reporting).astype(np.intp),
+    )
+
+
+def _score_one_origin(
+    i: int,
+    scoring_q: npt.NDArray[np.float64],
+    reporting_q: npt.NDArray[np.float64],
+    actual: npt.NDArray[np.float64],
+    scoring: npt.NDArray[np.float64],
+    reporting: npt.NDArray[np.float64],
+    nominal: tuple[float, ...],
+    crps: npt.NDArray[np.float64],
+    pinball: npt.NDArray[np.float64],
+    absolute: npt.NDArray[np.float64],
+    kept: npt.NDArray[np.float64],
+    hits: npt.NDArray[np.bool_],
+    widths: npt.NDArray[np.float64],
+) -> None:
+    """Write one origin's scores into the buffers.
+
+    Extracted so that the streaming path in :func:`run` and the checkpointed path in
+    :func:`score_forecasts` cannot drift apart. A results table that depended on which
+    driver produced it would not be a results table.
+
+    Args:
+        i: The origin number, indexing the leading axis of every buffer.
+        scoring_q: The origin's forecasts on the dense grid.
+        reporting_q: The same forecasts on the reporting grid.
+        actual: What happened, shape ``(n_nodes, horizon)``.
+        scoring: The dense quantile grid.
+        reporting: The reporting quantile grid.
+        nominal: Nominal coverages to measure.
+        crps: Buffer for CRPS.
+        pinball: Buffer for pinball loss.
+        absolute: Buffer for absolute error.
+        kept: Buffer for the reporting-grid forecasts.
+        hits: Buffer for coverage.
+        widths: Buffer for interval widths.
+    """
+    crps[i] = crps_from_quantiles(scoring_q, actual, scoring)
+    pinball[i] = pinball_by_level(reporting_q, actual, reporting)
+    absolute[i] = mae(reporting_q[..., reporting.size // 2], actual)
+    kept[i] = reporting_q
+    for j, coverage in enumerate(nominal):
+        lower, upper = interval_bounds(reporting_q, reporting, coverage)
+        hits[i, :, :, j] = covered(lower, upper, actual)
+        widths[i, :, :, j] = width(reporting_q, reporting, coverage)
+
+
+def score_forecasts(
+    name: str,
+    hierarchy: Hierarchy,
+    origins: Origins,
+    quantiles: npt.NDArray[np.float64],
+    actual: npt.NDArray[np.float64],
+    scoring: npt.NDArray[np.float64],
+    fit_seconds: float,
+    reporting: npt.NDArray[np.float64] | None = None,
+    nominal: tuple[float, ...] = levels_module.NOMINAL_COVERAGES,
+) -> Scores:
+    """Score forecasts that are already in hand, as a checkpoint's are.
+
+    Args:
+        name: The model's name.
+        hierarchy: The hierarchy the nodes belong to.
+        origins: The origin schedule.
+        quantiles: Forecasts, shape ``(n_origins, n_nodes, horizon, n_levels)``, on the
+            ``scoring`` grid.
+        actual: What happened, shape ``(n_origins, n_nodes, horizon)``.
+        scoring: The quantile grid ``quantiles`` is on.
+        fit_seconds: Model time the forecasts cost.
+        reporting: The reporting grid, which must be a subset of ``scoring``. Defaults to
+            the standard one.
+        nominal: Nominal coverages to measure.
+
+    Returns:
+        The scores.
+
+    Raises:
+        ValueError: The reporting grid is not contained in the scoring grid, so the
+            tables could not be read off the same forecasts as the CRPS.
+    """
+    report = levels_module.REPORTING if reporting is None else reporting
+    # Matched by nearest value rather than by equality: both grids are built with
+    # linspace and arithmetic, so 0.025 can arrive as 0.024999999999999998 and an exact
+    # lookup would miss it.
+    at = np.abs(scoring[:, np.newaxis] - report[np.newaxis, :]).argmin(axis=0)
+    if not np.allclose(scoring[at], report, rtol=0.0, atol=1e-9):
+        missing = [
+            float(q) for q, s in zip(report, scoring[at], strict=True) if abs(q - s) > 1e-9
+        ]
+        raise ValueError(
+            "the reporting grid must be a subset of the scoring grid, so that the tables "
+            f"and the CRPS come from one forecast rather than two. Not in it: {missing}"
+        )
+
+    n_origins, n_nodes, horizon = actual.shape
+    crps = np.empty((n_origins, n_nodes, horizon))
+    pinball = np.empty((n_origins, n_nodes, horizon, report.size))
+    absolute = np.empty((n_origins, n_nodes, horizon))
+    hits = np.empty((n_origins, n_nodes, horizon, len(nominal)), dtype=np.bool_)
+    widths = np.empty((n_origins, n_nodes, horizon, len(nominal)))
+    kept = np.empty((n_origins, n_nodes, horizon, report.size))
+
+    crossed = 0.0
+    for i in range(n_origins):
+        raw = quantiles[i]
+        crossed += crossing_rate(raw)
+        sorted_q = sort_quantiles(raw)
+        _score_one_origin(
+            i,
+            sorted_q,
+            sorted_q[..., at],
+            actual[i],
+            scoring,
+            report,
+            nominal,
+            crps,
+            pinball,
+            absolute,
+            kept,
+            hits,
+            widths,
+        )
+
+    return Scores(
+        model=name,
+        hierarchy=hierarchy,
+        origins=origins,
+        crps=crps,
+        pinball=pinball,
+        absolute_error=absolute,
+        hits=hits,
+        widths=widths,
+        reporting_quantiles=kept,
+        nominal=nominal,
+        crossing_rate=crossed / n_origins,
+        fit_seconds=fit_seconds,
     )

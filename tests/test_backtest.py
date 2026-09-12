@@ -338,3 +338,117 @@ def test_the_two_quantile_grids_come_from_one_forecast():
     assert combined.tolist() == [0.05, 0.1, 0.5, 0.9, 0.95]
     assert combined[scoring_at].tolist() == scoring.tolist()
     assert combined[reporting_at].tolist() == reporting.tolist()
+
+
+# --- checkpointing and resume ----------------------------------------------------
+
+
+def test_the_checkpointed_path_scores_identically_to_the_streaming_one(tmp_path):
+    """Two drivers, one results table. If these diverge, a number depends on plumbing."""
+    from headroom.backtest.driver import run_to_checkpoint, score_checkpoint
+    from headroom.backtest.run import run
+    from headroom.score import levels as lv
+
+    hierarchy, values, schedule = _small_panel()
+
+    streamed = run(SeasonalNaive(), "seasonal naive", values, hierarchy, schedule)
+    checkpoint = run_to_checkpoint(
+        SeasonalNaive(), "seasonal naive", values, hierarchy, schedule, tmp_path / "c.npz"
+    )
+    restored = score_checkpoint(
+        checkpoint, "seasonal naive", values, hierarchy, schedule, lv.SCORING
+    )
+
+    np.testing.assert_allclose(streamed.crps, restored.crps)
+    np.testing.assert_allclose(streamed.widths, restored.widths)
+    np.testing.assert_array_equal(streamed.hits, restored.hits)
+    np.testing.assert_allclose(streamed.reporting_quantiles, restored.reporting_quantiles)
+
+
+def test_resuming_an_interrupted_run_produces_the_same_forecasts(tmp_path):
+    from headroom.backtest.driver import run_to_checkpoint
+    from headroom.backtest.store import open_checkpoint
+    from headroom.score import levels as lv
+
+    hierarchy, values, schedule = _small_panel()
+    path = tmp_path / "c.npz"
+
+    class Stops:
+        """Forecasts a few origins, then refuses, as an interrupted run would."""
+
+        def __init__(self, after: int) -> None:
+            self.left = after
+
+        def forecast(self, train, horizon, levels):
+            if self.left <= 0:
+                raise KeyboardInterrupt
+            self.left -= 1
+            return SeasonalNaive().forecast(train, horizon, levels)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_to_checkpoint(
+            Stops(12), "seasonal naive", values, hierarchy, schedule, path, save_every=5
+        )
+
+    partial = open_checkpoint(path, "seasonal naive", schedule, hierarchy.n_nodes, lv.SCORING)
+    assert 0 < partial.n_done < len(schedule)
+    assert not partial.complete
+
+    resumed = run_to_checkpoint(
+        SeasonalNaive(), "seasonal naive", values, hierarchy, schedule, path
+    )
+    assert resumed.complete
+
+    whole = run_to_checkpoint(
+        SeasonalNaive(), "seasonal naive", values, hierarchy, schedule, tmp_path / "w.npz"
+    )
+    np.testing.assert_allclose(resumed.quantiles, whole.quantiles)
+
+
+def test_a_checkpoint_from_a_different_schedule_is_refused(tmp_path):
+    from headroom.backtest.driver import run_to_checkpoint
+    from headroom.backtest.store import open_checkpoint
+    from headroom.score import levels as lv
+
+    hierarchy, values, schedule = _small_panel()
+    path = tmp_path / "c.npz"
+    run_to_checkpoint(SeasonalNaive(), "seasonal naive", values, hierarchy, schedule, path)
+
+    other = Origins(days=schedule.days, min_train=400, horizon=14, step=14)
+    with pytest.raises(ValueError, match="different settings"):
+        open_checkpoint(path, "seasonal naive", other, hierarchy.n_nodes, lv.SCORING)
+
+    with pytest.raises(ValueError, match="different settings"):
+        open_checkpoint(path, "a different model", schedule, hierarchy.n_nodes, lv.SCORING)
+
+
+def test_scoring_a_partial_checkpoint_is_refused_rather_than_reported(tmp_path):
+    from headroom.backtest.driver import score_checkpoint
+    from headroom.backtest.store import open_checkpoint
+    from headroom.score import levels as lv
+
+    hierarchy, values, schedule = _small_panel()
+    empty = open_checkpoint(
+        tmp_path / "c.npz", "seasonal naive", schedule, hierarchy.n_nodes, lv.SCORING
+    )
+    with pytest.raises(ValueError, match="origins are done"):
+        score_checkpoint(empty, "seasonal naive", values, hierarchy, schedule, lv.SCORING)
+
+
+def test_score_forecasts_refuses_a_reporting_grid_outside_the_scoring_grid():
+    from headroom.backtest.run import score_forecasts
+
+    hierarchy, _, schedule = _small_panel()
+    scoring = np.array([0.1, 0.5, 0.9])
+    shape = (len(schedule), hierarchy.n_nodes, schedule.horizon)
+    with pytest.raises(ValueError, match="subset of the scoring grid"):
+        score_forecasts(
+            "m",
+            hierarchy,
+            schedule,
+            np.zeros((*shape, scoring.size)),
+            np.zeros(shape),
+            scoring,
+            0.0,
+            reporting=np.array([0.05, 0.5, 0.95]),
+        )
