@@ -113,3 +113,58 @@ def test_a_real_fit_produces_sorted_non_negative_quantiles_in_the_right_shape():
     # The median should be in the neighbourhood of the weekly pattern it was shown.
     median = out[0, :, lv.REPORTING.tolist().index(0.5)]
     assert 60.0 < float(median.mean()) < 150.0
+
+
+@pytest.mark.slow
+def test_batching_gives_the_same_forecasts_as_fitting_each_model_alone():
+    """Batching is an efficiency, so it must not change a single number."""
+    from headroom.models.stats import BatchedModels
+
+    rng = np.random.default_rng(1)
+    weekly = np.tile(np.array([80.0, 100.0, 100.0, 100.0, 100.0, 130.0, 90.0]), 40)
+    train = np.vstack([weekly + rng.normal(0.0, 5.0, size=weekly.size) for _ in range(2)])
+
+    picked = [m for m in catalogue() if m.name in ("ETS", "Theta")]
+    batched = BatchedModels(tuple(picked), n_jobs=1).forecast_all(train, 14, lv.REPORTING)
+
+    assert set(batched) == {"ETS", "Theta"}
+    for model in picked:
+        alone = StatisticalModel(model.name, model.build, model.sf_name, n_jobs=1).forecast(
+            train, 14, lv.REPORTING
+        )
+        np.testing.assert_allclose(batched[model.name], alone)
+
+
+@pytest.mark.slow
+def test_a_batch_keeps_each_models_columns_apart():
+    """A mix-up here would silently report one model's numbers under another's name."""
+    from headroom.models.stats import BatchedModels
+
+    rng = np.random.default_rng(2)
+    weekly = np.tile(np.array([50.0, 60.0, 60.0, 60.0, 60.0, 90.0, 55.0]), 40)
+    train = (weekly + rng.normal(0.0, 3.0, size=weekly.size))[np.newaxis, :]
+
+    picked = [m for m in catalogue() if m.name in ("ETS", "Theta")]
+    batched = BatchedModels(tuple(picked), n_jobs=1).forecast_all(train, 14, lv.REPORTING)
+
+    # Two different models on the same data do not produce identical forecasts.
+    assert not np.allclose(batched["ETS"], batched["Theta"])
+    for block in batched.values():
+        assert block.shape == (1, 14, lv.REPORTING.size)
+        assert np.all(np.diff(block, axis=-1) >= 0.0)
+
+
+def test_a_batch_refuses_a_misshaped_training_array():
+    from headroom.models.stats import BatchedModels
+
+    batch = BatchedModels(tuple(catalogue()[:1]))
+    with pytest.raises(ValueError, match="train must be"):
+        batch.forecast_all(np.zeros(50), 14, lv.REPORTING)
+    with pytest.raises(ValueError, match="horizon must be"):
+        batch.forecast_all(np.zeros((2, 50)), 0, lv.REPORTING)
+
+
+def test_a_batch_reports_its_model_names_in_order():
+    from headroom.models.stats import BatchedModels
+
+    assert BatchedModels(tuple(catalogue())).names == ("ETS", "Theta", "MSTL", "AutoARIMA")

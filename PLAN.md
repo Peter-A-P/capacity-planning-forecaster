@@ -188,6 +188,22 @@ model); probabilistic reconciliation (point MinT with conformal on the reconcile
 stays). The baselines, probabilistic scoring, coverage through the shift, reconciliation
 coherence, the decision layer and the neural verdict are not droppable.
 
+### 2.9 The training window is trailing (added 2026-09-12)
+
+Each forecast sees the three years before its origin, not the whole record. The plan did
+not say either way, and the difference turned out to matter enough to write down.
+
+Statistically, an expanding window would fit the last origin on twenty-one years spanning
+two regime changes. Practically, it runs from 1,095 days of history at the first origin to
+7,829 at the last, so every fit gets more expensive and a run's cost cannot be projected
+from its first origins, which is how the first estimate of this project's compute came out
+roughly half of what it should have been.
+
+Measured on seasonal naive over the same 964 origins: CRPS is unchanged (163.12 against
+163.19, far inside either interval), coverage at 90 percent nominal **improves** from
+0.8643 to 0.8834, width rises from 829 to 886, and the runtime halves. `docs/methods.md`
+has the table.
+
 ## 6. Cost
 
 Everything runs on the laptop's CPU: the statistical models in seconds per series, the

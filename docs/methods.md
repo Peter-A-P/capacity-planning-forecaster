@@ -22,8 +22,36 @@ every origin and records the shape of every call the runner makes.
 | Spacing | 7 days | Daily origins give 14x the compute for forecasts that are nearly the same forecast, and worsen the dependence the bootstrap has to handle. Weekly spacing also holds day of week fixed, so no method gets more Mondays than another |
 | Refitting | Every 4th origin | Roughly monthly. It is what the CPU budget allows for the neural models, and the statistical models are held to the same schedule rather than being given an advantage the expensive models were denied |
 | Minimum history | 3 years | Three annual cycles, the least a model claiming to know the annual shape can be fitted on |
+| **Training window** | **3 years, trailing** | See below |
 
 On the NYC panel this gives **964 origins, 2007-12-31 to 2026-06-15**, and 241 refits.
+
+### The training window is trailing, not expanding
+
+Each forecast sees the 1,095 days before its origin, not everything back to 2005.
+
+The statistical reason: under an expanding window the last origin would be fitted on
+twenty-one years spanning two regime changes, and a model that averages 2008 and 2025
+demand is describing a city that no longer exists.
+
+The practical reason, which is why it is a fixed window rather than a detail: an expanding
+window runs from 1,095 days of history at the first origin to **7,829 at the last**, so
+every fit gets steadily more expensive and a run's total cost cannot be estimated from its
+first origins. With a fixed window the cost per origin is flat and the total is knowable
+in advance.
+
+Measured both ways, seasonal naive over the same 964 origins, 2026-09-12:
+
+| Window | City CRPS | 95% interval | Coverage at 90% | Mean width | Runtime |
+|---|---:|---|---:|---:|---:|
+| Expanding | 163.186 | [152.46, 176.33] | 0.8643 | 828.6 | 474 s |
+| **Trailing 1,095 days** | **163.123** | [152.58, 176.08] | **0.8834** | 885.6 | **212 s** |
+
+The trailing window costs nothing in CRPS, the difference being far inside either
+interval, and it **covers better**: 0.8834 against 0.8643 at 90 percent nominal. It buys
+that with width, 886 against 829, which is the honest reading of it. Three years of
+recent residuals describe the current regime's spread better than twenty-one years of
+mixed ones do. It also halves the runtime, but that is not why it is the default.
 
 An origin whose 14-day horizon would run past the end of the record is not included
 rather than being scored on a short horizon, which would quietly weight the end of the
@@ -182,19 +210,13 @@ crossed at any of the 964 origins.
 Seasonal naive over 964 origins, 14-day horizon, 2026-09-12. This is the baseline the
 tables will be reported against, not a result about any model.
 
-| Level | CRPS | 95% interval | MAE (footnote) |
-|---|---:|---|---:|
-| City | 163.19 | [152.46, 176.33] | 224.68 |
-| Borough | 40.64 | [38.58, 43.24] | 56.24 |
-| Dispatch area | 10.99 | [10.67, 11.40] | 15.38 |
+On the trailing window, which is the default.
 
-| Level | Nominal | Empirical coverage | Mean width |
-|---|---:|---:|---:|
-| City | 80% | 0.751 | 619.4 |
-| City | 90% | 0.864 | 828.6 |
-| City | 95% | 0.926 | 1027.9 |
-| Borough | 90% | 0.872 | 209.3 |
-| Dispatch area | 90% | 0.881 | 58.7 |
+| Level | CRPS | 95% interval | Coverage at 90% | Mean width |
+|---|---:|---|---:|---:|
+| City | 163.12 | [152.58, 176.08] | 0.8834 | 885.6 |
+| Borough | 40.62 | [38.62, 43.19] | 0.8896 | 222.5 |
+| Dispatch area | 10.99 | [10.67, 11.39] | 0.8959 | 61.6 |
 
 **The baseline undercovers at every level and every nominal rate.** That is not a defect
 in the implementation; it is what an empirical residual distribution does on a series
@@ -265,31 +287,29 @@ gives 0.9065.
 
 Wrapping the seasonal naive median, 964 origins, 90 percent nominal, 2026-09-12.
 
-| Method | City | Borough | Area | City mean width |
-|---|---:|---:|---:|---:|
-| Base quantiles, no conformal | 0.864 | 0.872 | 0.881 | 828.6 |
-| Split conformal | 0.897 | 0.901 | 0.907 | 981.3 |
-| Adaptive, gamma 0.01 | 0.897 | 0.899 | 0.901 | 1012.5 |
-| Adaptive, gamma 0.05 | 0.897 | 0.897 | 0.899 | 1051.5 |
-| Aggregated, 6 experts | 0.894 | 0.897 | 0.898 | 996.6 |
+| Method | City | City mean width |
+|---|---:|---:|
+| Base quantiles, no conformal | 0.8834 | 885.6 |
+| Split conformal | 0.8965 | 982.8 |
+| Adaptive, gamma 0.05 | 0.8969 | 1055.4 |
+| Aggregated, 6 experts | 0.8941 | 999.6 |
 
 **Conformal fixes the baseline's undercoverage.** Every method lands within half a point of
-nominal at every level of the hierarchy, against a base forecast that was 3.6 points low at
-the city and undercovered everywhere. It costs width: 981 against 829 at the city, which is
+nominal at every level of the hierarchy, against a base forecast that was 1.7 points low at
+the city and undercovered everywhere. It costs width: 983 against 886 at the city, which is
 the honest price and is reported beside the coverage rather than under it.
 
 ### Worst 91-day window at the city, and the finding that matters
 
-| Method | Worst window | Ends | First 90 days from 2020-03-01 |
-|---|---:|---|---:|
-| Base quantiles, no conformal | 0.156 | 2020-05-04 | - |
-| Split conformal | 0.588 | 2020-05-04 | 0.593 |
-| Adaptive, gamma 0.01 | 0.593 | 2020-04-27 | 0.599 |
-| **Adaptive, gamma 0.05** | **0.665** | 2020-04-20 | **0.676** |
-| Aggregated, 6 experts | 0.621 | 2020-04-27 | 0.626 |
+| Method | Worst window | Ends |
+|---|---:|---|
+| Base quantiles, no conformal | 0.156 | 2020-05-04 |
+| Split conformal | 0.582 | 2020-05-04 |
+| **Adaptive, gamma 0.05** | **0.670** | 2020-04-20 |
+| Aggregated, 6 experts | 0.610 | 2020-05-04 |
 
-Conformal improves the worst window enormously, from 0.156 to between 0.59 and 0.67, and
-adaptive conformal at a step size that can actually move beats split conformal by 7.7
+Conformal improves the worst window enormously, from 0.156 to between 0.58 and 0.67, and
+adaptive conformal at a step size that can actually move beats split conformal by 8.8
 points. But **no method here holds nominal coverage through the March 2020 shift**, and the
 plan expected adaptive conformal to track nominal within weeks. It does not. Why it does
 not is the useful part.

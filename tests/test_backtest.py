@@ -17,7 +17,12 @@ DAYS = tuple(date(2010, 1, 1) + timedelta(days=i) for i in range(2_000))
 
 
 def _origins(**kwargs) -> Origins:
-    settings: dict[str, object] = {"min_train": 400, "horizon": 14, "step": 7}
+    settings: dict[str, object] = {
+        "min_train": 400,
+        "horizon": 14,
+        "step": 7,
+        "train_window": 400,
+    }
     settings.update(kwargs)
     return Origins(days=DAYS, **settings)  # type: ignore[arg-type]
 
@@ -86,7 +91,7 @@ def test_refitting_at_every_origin_is_expressible():
 def test_a_record_too_short_for_the_schedule_is_refused():
     short = tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(100))
     with pytest.raises(ValueError, match="too short"):
-        Origins(days=short, min_train=90, horizon=14)
+        Origins(days=short, min_train=90, horizon=14, train_window=90)
 
 
 def test_a_non_positive_schedule_parameter_is_refused():
@@ -245,7 +250,7 @@ def _small_panel(n_days: int = 900, seed: int = 0):
         ]
     )
     days = tuple(date(2010, 1, 1) + timedelta(days=i) for i in range(n_days))
-    schedule = Origins(days=days, min_train=400, horizon=14, step=7)
+    schedule = Origins(days=days, min_train=400, horizon=14, step=7, train_window=400)
     return hierarchy, hierarchy.aggregate(leaves), schedule
 
 
@@ -276,10 +281,16 @@ def test_the_backtest_hands_the_model_only_what_the_origin_allows():
 
     run(Recording(), "recording", values, hierarchy, schedule)
 
-    expected = [o.index + 1 for o in schedule]
-    assert seen == expected
-    # Every training array stops at its origin, so none of them reaches the last day.
-    assert max(seen) <= len(schedule.days) - schedule.horizon
+    # One call per origin, each handed exactly the window and no more. Under the trailing
+    # window every call is the same length, which is the point of having one.
+    assert len(seen) == len(schedule)
+    assert set(seen) == {schedule.train_window}
+
+    # And the slice each call came from stops at its own origin, never past it.
+    for origin in schedule:
+        train = range(*origin.train.indices(len(schedule.days)))
+        assert max(train) == origin.index
+        assert max(train) <= len(schedule.days) - schedule.horizon - 1
 
 
 def test_a_sharper_model_scores_better_than_a_deliberately_hedged_one():
@@ -414,7 +425,7 @@ def test_a_checkpoint_from_a_different_schedule_is_refused(tmp_path):
     path = tmp_path / "c.npz"
     run_to_checkpoint(SeasonalNaive(), "seasonal naive", values, hierarchy, schedule, path)
 
-    other = Origins(days=schedule.days, min_train=400, horizon=14, step=14)
+    other = Origins(days=schedule.days, min_train=400, horizon=14, step=14, train_window=400)
     with pytest.raises(ValueError, match="different settings"):
         open_checkpoint(path, "seasonal naive", other, hierarchy.n_nodes, lv.SCORING)
 
@@ -452,3 +463,40 @@ def test_score_forecasts_refuses_a_reporting_grid_outside_the_scoring_grid():
             0.0,
             reporting=np.array([0.05, 0.5, 0.95]),
         )
+
+
+# --- the trailing training window ------------------------------------------------
+
+
+def test_a_trailing_window_keeps_every_origin_seeing_the_same_amount_of_history():
+    """Under an expanding window the last origin sees seven times the first one's data."""
+    schedule = _origins(train_window=400)
+    lengths = {len(range(*o.train.indices(len(DAYS)))) for o in schedule}
+    assert lengths == {400}
+
+
+def test_an_expanding_window_is_still_expressible_and_grows():
+    schedule = _origins(train_window=None)
+    lengths = [len(range(*o.train.indices(len(DAYS)))) for o in schedule]
+    assert lengths[0] == 400
+    assert lengths[-1] > 1_500
+    assert lengths == sorted(lengths)
+
+
+def test_the_window_still_ends_at_the_origin_so_it_cannot_see_ahead():
+    for window in (400, None):
+        for origin in _origins(train_window=window):
+            train = range(*origin.train.indices(len(DAYS)))
+            assert max(train) == origin.index
+            assert set(train).isdisjoint(origin.target_days)
+
+
+def test_a_window_longer_than_the_guaranteed_history_is_refused():
+    """Otherwise the first origins would quietly see less history than the later ones."""
+    with pytest.raises(ValueError, match="longer than"):
+        _origins(min_train=400, train_window=500)
+
+
+def test_a_non_positive_window_is_refused():
+    with pytest.raises(ValueError, match="train_window must be at least 1"):
+        _origins(train_window=0)

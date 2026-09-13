@@ -28,6 +28,25 @@ ideal and is what a fair comparison wants; refitting monthly is what the CPU bud
 PLAN.md section 6 allows for the neural models, and applying the same schedule to the
 statistical models keeps the comparison fair rather than giving the cheap models an
 advantage the expensive ones were denied.
+
+**How much history each forecast sees.** A trailing window of
+:data:`TRAIN_WINDOW_DAYS`, not everything back to 2005. Two reasons and they point the
+same way.
+
+The statistical reason: by the last origin an expanding window would be fitting on
+twenty-one years spanning two regime changes, and a model that averages 2008 and 2025
+demand is describing a city that no longer exists. Three years is long enough for three
+annual cycles and short enough to have left the last regime behind.
+
+The practical reason, which is why this is a fixed window rather than an afterthought:
+under an expanding window the training length runs from 1,095 days at the first origin to
+7,829 at the last, so **every fit gets steadily more expensive** and a backtest's total
+cost cannot be estimated from its first origins. Measured, the same three models cost
+about 120 seconds an origin early and far more late. A trailing window makes the cost per
+origin flat and the total predictable.
+
+Set ``train_window`` to None for the expanding behaviour, which is what the cheap models
+can afford and what a reader may expect to see compared.
 """
 
 from collections.abc import Iterator
@@ -49,6 +68,11 @@ REFIT_EVERY: Final[int] = 4
 #: on, and it still leaves eighteen years of the record to be scored over.
 MIN_TRAIN_DAYS: Final[int] = 3 * 365
 
+#: Days of history each forecast may see. Equal to :data:`MIN_TRAIN_DAYS`, so every origin
+#: in the backtest sees exactly the same amount of history as the first one and no model
+#: is advantaged by where in the record it happened to be asked.
+TRAIN_WINDOW_DAYS: Final[int] = MIN_TRAIN_DAYS
+
 
 @dataclass(frozen=True, slots=True)
 class Origin:
@@ -61,6 +85,8 @@ class Origin:
         day: The origin's date.
         horizon: Days forecast ahead.
         refit: Whether a model should be refitted at this origin rather than reused.
+        train_window: Days of history the forecaster may see, or None for everything up
+            to the origin.
     """
 
     number: int
@@ -68,15 +94,18 @@ class Origin:
     day: date
     horizon: int
     refit: bool
+    train_window: int | None = None
 
     @property
     def train(self) -> slice:
         """The days a forecaster made at this origin may see.
 
         Ends at ``index + 1`` because a slice bound is exclusive and the origin day
-        itself is observed.
+        itself is observed. Starts at the window, or at the beginning of the record when
+        there is no window.
         """
-        return slice(0, self.index + 1)
+        start = 0 if self.train_window is None else max(0, self.index + 1 - self.train_window)
+        return slice(start, self.index + 1)
 
     @property
     def target(self) -> slice:
@@ -99,6 +128,7 @@ class Origins:
         step: Days between origins.
         refit_every: Origins between refits.
         min_train: Days of history required before the first origin.
+        train_window: Days of history each forecast may see, or None to let it expand.
     """
 
     days: tuple[date, ...]
@@ -106,6 +136,7 @@ class Origins:
     step: int = STEP
     refit_every: int = REFIT_EVERY
     min_train: int = MIN_TRAIN_DAYS
+    train_window: int | None = TRAIN_WINDOW_DAYS
 
     def __post_init__(self) -> None:
         """Check the schedule can produce at least one scorable origin.
@@ -122,6 +153,15 @@ class Origins:
         ):
             if value < 1:
                 raise ValueError(f"{name} must be at least 1, got {value}")
+        if self.train_window is not None:
+            if self.train_window < 1:
+                raise ValueError(f"train_window must be at least 1, got {self.train_window}")
+            if self.train_window > self.min_train:
+                raise ValueError(
+                    f"train_window of {self.train_window} is longer than the {self.min_train} "
+                    "days of history guaranteed before the first origin, so the first "
+                    "forecasts would see less history than the later ones"
+                )
         needed = self.min_train + self.horizon
         if len(self.days) < needed:
             raise ValueError(
@@ -154,6 +194,7 @@ class Origins:
                 day=self.days[index],
                 horizon=self.horizon,
                 refit=number % self.refit_every == 0,
+                train_window=self.train_window,
             )
 
     def __len__(self) -> int:
