@@ -14,15 +14,25 @@ checkpoint built under different ones. Silently mixing forecasts from two differ
 schedules would produce a results table that never existed.
 """
 
+import io
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import numpy.typing as npt
 
 from headroom.backtest.origins import Origins
+
+#: Attempts at the final rename, and the pause between them. On Windows a file that was
+#: written moments ago can still be held briefly by an indexer or a virus scanner, and the
+#: rename then fails with a permission error. That is transient and clears in
+#: milliseconds, but an unhandled one would end a backtest that has been running for
+#: hours, so it is retried rather than propagated on the first attempt.
+_RENAME_ATTEMPTS: Final[int] = 5
+_RENAME_PAUSE_SECONDS: Final[float] = 0.2
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +104,28 @@ class Checkpoint:
                 seconds=self.seconds,
                 settings=np.array(json.dumps(self.settings)),
             )
-        temporary.replace(self.path)
+        _replace_with_retries(temporary, self.path)
+
+
+def _replace_with_retries(temporary: Path, target: Path) -> None:
+    """Rename a finished temporary file over its target, retrying a transient refusal.
+
+    Args:
+        temporary: The file just written.
+        target: Where it belongs.
+
+    Raises:
+        PermissionError: The rename was still refused after every attempt, which means
+            something holds the target open for longer than a passing scan would.
+    """
+    for attempt in range(_RENAME_ATTEMPTS):
+        try:
+            temporary.replace(target)
+            return
+        except PermissionError:
+            if attempt == _RENAME_ATTEMPTS - 1:
+                raise
+            time.sleep(_RENAME_PAUSE_SECONDS)
 
 
 def settings_of(
@@ -158,7 +189,11 @@ def open_checkpoint(
             seconds=np.zeros(len(origins)),
         )
 
-    with np.load(path, allow_pickle=False) as stored:
+    # Read the whole file into memory before handing it to numpy. np.load keeps an OS
+    # handle on the archive, and on Windows that makes the next atomic save fail with a
+    # permission error when it tries to rename over a file something still has open.
+    # These checkpoints are a few megabytes, so the copy costs nothing worth measuring.
+    with io.BytesIO(path.read_bytes()) as buffer, np.load(buffer, allow_pickle=False) as stored:
         found = json.loads(str(stored["settings"]))
         if found != wanted:
             differences = {
@@ -173,7 +208,7 @@ def open_checkpoint(
         return Checkpoint(
             path=path,
             settings=found,
-            quantiles=stored["quantiles"],
-            done=stored["done"],
-            seconds=stored["seconds"],
+            quantiles=np.array(stored["quantiles"]),
+            done=np.array(stored["done"]),
+            seconds=np.array(stored["seconds"]),
         )

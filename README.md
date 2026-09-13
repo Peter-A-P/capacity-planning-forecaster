@@ -7,8 +7,12 @@ defensible number on both, site by site, rolling up to the region.
 
 **Status: building,** week 1 of two, started 2026-09-12. The plan is in
 [PLAN.md](PLAN.md): a two-week build on public demand series, everything on a laptop CPU.
-The data is loaded and checked ([docs/data.md](docs/data.md)); no forecast has been made
-yet, so the tables below are empty.
+
+The data is loaded and checked ([docs/data.md](docs/data.md)), the baseline and the
+conformal intervals are measured ([docs/methods.md](docs/methods.md)), and the statistical
+and neural comparisons are not built yet. The tables below stay empty until the report
+command fills them, which is the only thing allowed to. [docs/state.md](docs/state.md) is
+the working state of the build.
 
 ## Result
 

@@ -500,3 +500,56 @@ def test_a_window_longer_than_the_guaranteed_history_is_refused():
 def test_a_non_positive_window_is_refused():
     with pytest.raises(ValueError, match="train_window must be at least 1"):
         _origins(train_window=0)
+
+
+def test_a_checkpoint_save_retries_a_transient_rename_refusal(tmp_path, monkeypatch):
+    """A nine-hour run must not die because a virus scanner held a file for a moment."""
+    from pathlib import Path
+
+    from headroom.backtest import store
+    from headroom.backtest.store import open_checkpoint
+    from headroom.score import levels as lv
+
+    hierarchy, _, schedule = _small_panel()
+    point = open_checkpoint(
+        tmp_path / "c.npz", "seasonal naive", schedule, hierarchy.n_nodes, lv.SCORING
+    )
+
+    real = Path.replace
+    refusals = {"left": 2}
+
+    def flaky(self, target):
+        if refusals["left"] > 0:
+            refusals["left"] -= 1
+            raise PermissionError(5, "Access is denied")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "replace", flaky)
+    monkeypatch.setattr(store, "_RENAME_PAUSE_SECONDS", 0.0)
+
+    point.save()
+
+    assert refusals["left"] == 0
+    assert (tmp_path / "c.npz").exists()
+
+
+def test_a_rename_that_never_succeeds_is_reported_rather_than_swallowed(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from headroom.backtest import store
+    from headroom.backtest.store import open_checkpoint
+    from headroom.score import levels as lv
+
+    hierarchy, _, schedule = _small_panel()
+    point = open_checkpoint(
+        tmp_path / "c.npz", "seasonal naive", schedule, hierarchy.n_nodes, lv.SCORING
+    )
+
+    def always_refuse(self, target):
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(Path, "replace", always_refuse)
+    monkeypatch.setattr(store, "_RENAME_PAUSE_SECONDS", 0.0)
+
+    with pytest.raises(PermissionError):
+        point.save()

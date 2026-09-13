@@ -339,3 +339,63 @@ This is a limitation of the construction, not of the tuning, and it is a propert
 scale-free, dividing each residual by a local volatility estimate so the interval can exceed
 anything the window has literally seen. That is the obvious next step and it is named as
 such rather than quietly attempted; nothing in this repository claims it yet.
+
+
+---
+
+## Compute, and why these numbers are stated carefully
+
+`PLAN.md` section 1 promises "compute time per method" as a reported number, so it is
+measured rather than estimated, and the conditions it was measured under are given with
+it.
+
+### Cost per origin, idle machine
+
+37 series, 1,095-day trailing window, 12 cores, `n_jobs=-1`, 2026-09-12:
+
+| Method | Seconds per origin |
+|---|---:|
+| Seasonal naive | 0.2 |
+| ETS | 33 |
+| Theta | 34 |
+| MSTL | 42 |
+| AutoARIMA | 166 |
+| ETS, Theta, MSTL and AutoARIMA in one call | 190 |
+
+Batching matters: four models in one call cost 190 seconds against 275 if their individual
+times are added, because the frame is built once and the process pool starts once.
+
+### A timing taken on a busy machine is not a measurement
+
+The same AutoARIMA fit, same origin, same data, was measured at **166, 215, 310 and 380
+seconds** depending on what else was running on the same twelve cores. Two of those runs
+differed only in being asked for 3 quantile levels against 99, and the 99-level run was the
+**faster** of the two, which is what made it clear the spread was contention rather than
+workload.
+
+So: the table above was taken on an idle machine, and any figure this project reports for
+compute has to be. The quantile grid, separately and properly measured, costs between 1 and
+7 percent going from 5 levels to 199, which is to say the cost is the model fit and nothing
+else.
+
+### What that buys, and what it forces
+
+An expanding training window made this worse in a way that is easy to miss: training length
+ran from 1,095 days at the first origin to 7,829 at the last, so cost per origin grew
+through the run and a total could not be projected from the first origins. The trailing
+window fixed that, and the cost per origin is now flat across the record (117 to 167 seconds
+for three models, with no trend).
+
+At 964 weekly origins, four models is about 51 hours, which the CA$25 laptop-CPU budget in
+`PLAN.md` section 6 does not buy. The origin schedule for the statistical models is
+therefore a real choice with a stated cost, not an implementation detail:
+
+| Schedule | Origins | ETS + Theta + MSTL | Origins inside the six-week 2020 surge |
+|---|---:|---:|---:|
+| Weekly | 964 | ~20 h | ~6 |
+| Fortnightly | 482 | ~15-19 h | ~3 |
+| Monthly | 241 | ~7.5-9.5 h | 1-2 |
+
+The last column is what the choice costs scientifically: the headline chart resolves the
+March 2020 shift only as finely as the origins are spaced. Whichever is chosen is recorded
+here with the resolution it bought.
