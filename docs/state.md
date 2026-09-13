@@ -14,8 +14,17 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**140 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**142 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
+
+| File | Tests | Covers |
+|---|---:|---|
+| `test_backtest.py` | 38 | Origins and look-ahead, seasonal naive, the runner, checkpointing |
+| `test_score.py` | 34 | CRPS against the closed form, pinball, coverage, width, skill, block bootstrap |
+| `test_conformal.py` | 20 | The feedback rule, the conformal quantile, split, adaptive, aggregated |
+| `test_data.py` | 20 | The loader, the borough judgement call, checks, the calendar |
+| `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
+| `test_hierarchy.py` | 14 | The summing matrix and coherence |
 
 ### Built and measured
 
