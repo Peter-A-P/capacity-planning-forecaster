@@ -26,6 +26,7 @@ Not yet measured. The build fills these tables.
 | Best statistical | | | | | | | |
 | N-HiTS | | | | | | | |
 | PatchTST | | | | | | | |
+| TimesFM, zero-shot (clean window only) | | | | | | | |
 
 **Reconciliation and the rota**
 
@@ -47,8 +48,10 @@ Not yet measured. The build fills these tables.
 
 See [PLAN.md](PLAN.md). Public emergency medical dispatch incidents are aggregated to daily
 counts on a city, borough and dispatch-area hierarchy. Seasonal naive and statistical
-models come first, then N-HiTS and PatchTST as global neural models, all producing
-quantiles and scored by CRPS and pinball loss in a rolling-origin backtest with block
+models come first, then N-HiTS and PatchTST as global neural models, and TimesFM as a
+pretrained foundation model used zero-shot and scored only on dates after its
+pretraining data ends, so it cannot have seen them. All produce
+quantiles and are scored by CRPS and pinball loss in a rolling-origin backtest with block
 bootstrap intervals. Adaptive conformal inference wraps each model's forecasts and is
 compared with split conformal through the March 2020 shift. MinT reconciliation makes the
 levels sum, with a probabilistic reconciliation so the quantiles stay coherent. A

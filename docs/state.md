@@ -41,7 +41,13 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ### Not built yet
 
-- **Neural models** (N-HiTS, PatchTST). `PLAN.md` section 2.7. Week 2.
+- **Neural models** (N-HiTS, PatchTST). `PLAN.md` section 2.7. Week 2. The refit
+  schedule is set from a measured single-fit time on an idle machine; weekly refits are
+  unlikely to be affordable on CPU.
+- **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
+  First check it installs under Python 3.13. Its pretraining postdates most origins, so
+  it is scored separately on a clean window after its pretraining ends; read 2.7a before
+  reporting any TimesFM number.
 - **Reconciliation** (MinT, probabilistic, coherence verified at every origin).
   `PLAN.md` section 2.5. Week 2. The summing matrix it needs is already in
   `headroom.hierarchy.spec` and tested.
@@ -56,9 +62,14 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ---
 
-## The open decision: how much laptop time for the statistical models
+## Decided: weekly origins for the statistical models
 
-**Nothing is blocked on code. This needs Peter's answer.**
+**Decided, and running.** ETS, Theta and MSTL at weekly origins (964) started
+2026-09-13 13:20, logging to `backtest/out/stats-weekly.log`. Early origins ran at about
+21 seconds each for all three together, projecting about 5.5 hours, well under the
+estimates below. Record the measured total in `docs/methods.md` when it finishes, and
+do not time anything else while it runs. The estimates and reasoning below are kept as
+the record of how the decision was made.
 
 The statistical models have to be back-tested over the record, and that is hours of CPU.
 The measured cost, on an **idle** machine, 37 series, 1,095-day window, 12 cores:
