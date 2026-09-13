@@ -231,6 +231,71 @@ have to fix.
 
 ---
 
+## The statistical models
+
+ETS, Theta and MSTL through StatsForecast, each giving its own prediction quantiles, at
+the same 964 weekly origins as the baseline, on the same 1,095-day trailing window, with
+every model refitted at every origin. AutoARIMA is deferred (see Compute below).
+
+### Measured result
+
+`headroom score --models ETS,Theta,MSTL --step 7`, 2026-09-13. Seasonal naive is rerun on
+the same origins inside the command, so skill is paired, and it reproduced the baseline
+table above exactly on a different machine. Every interval is a 95 percent moving block
+bootstrap over origins (block 28, 2,000 resamples, seed 0); skill intervals resample both
+methods on the same drawn origins.
+
+Coverage and width are at 90 percent nominal, of **each model's own quantiles, with no
+conformal step**. Nothing guarantees these coverages; they are what the model's
+distributional assumptions delivered on this record.
+
+City:
+
+| Method | CRPS | Skill against seasonal naive | Coverage at 90% | Mean width |
+|---|---|---|---|---|
+| Seasonal naive | 163.12 [152.58, 176.08] | 0 | 0.883 [0.870, 0.899] | 885.6 [861.5, 912.1] |
+| ETS | 133.92 [125.28, 143.53] | +0.179 [+0.164, +0.198] | 0.919 [0.908, 0.933] | 835.8 [806.3, 866.9] |
+| Theta | 135.89 [127.12, 145.79] | +0.167 [+0.151, +0.187] | 0.912 [0.901, 0.926] | 834.4 [801.7, 867.6] |
+| MSTL | 148.50 [137.26, 162.80] | +0.090 [+0.039, +0.130] | 0.781 [0.762, 0.799] | 613.2 [590.5, 640.6] |
+
+Borough:
+
+| Method | CRPS | Skill against seasonal naive | Coverage at 90% | Mean width |
+|---|---|---|---|---|
+| Seasonal naive | 40.62 [38.62, 43.19] | 0 | 0.890 [0.881, 0.899] | 222.5 [217.2, 227.9] |
+| ETS | 32.09 [30.38, 34.15] | +0.210 [+0.201, +0.222] | 0.911 [0.902, 0.921] | 192.8 [186.5, 199.5] |
+| Theta | 32.51 [30.77, 34.60] | +0.200 [+0.188, +0.213] | 0.899 [0.890, 0.909] | 190.3 [183.2, 198.1] |
+| MSTL | 36.50 [34.38, 39.26] | +0.101 [+0.063, +0.130] | 0.738 [0.724, 0.751] | 138.8 [133.7, 144.8] |
+
+Dispatch area:
+
+| Method | CRPS | Skill against seasonal naive | Coverage at 90% | Mean width |
+|---|---|---|---|---|
+| Seasonal naive | 10.99 [10.67, 11.39] | 0 | 0.896 [0.891, 0.901] | 61.6 [60.5, 62.7] |
+| ETS | 8.21 [7.94, 8.58] | +0.253 [+0.246, +0.258] | 0.904 [0.897, 0.910] | 48.1 [47.0, 49.4] |
+| Theta | 8.32 [8.04, 8.69] | +0.243 [+0.236, +0.249] | 0.890 [0.884, 0.896] | 46.9 [45.6, 48.3] |
+| MSTL | 9.83 [9.48, 10.28] | +0.106 [+0.088, +0.120] | 0.704 [0.696, 0.711] | 34.7 [33.7, 35.8] |
+
+What this says:
+
+* **ETS and Theta beat seasonal naive clearly at every level**, by 17 to 25 percent in
+  CRPS, with intervals nowhere near zero. Skill grows down the hierarchy, from about 0.17
+  at the city to 0.25 at the dispatch area, where series are noisier and a naive copy of
+  last week carries more of that noise forward.
+* **ETS and Theta cannot be separated on this table.** Their skill intervals overlap at
+  every level. Ranking them needs the paired difference between the two, bootstrapped
+  directly, which the report command should compute rather than this table implying it.
+* **MSTL is the weakest of the three and its intervals are far too narrow**: 0.70 to 0.78
+  coverage at 90 percent nominal, with widths about 30 percent below the others. Its CRPS
+  still beats seasonal naive, so the median is useful and the spread is what fails. The
+  likely cause is that its intervals come from the trend model on the deseasonalised
+  series and carry none of the uncertainty in the seasonal components. That is a
+  hypothesis, not yet checked.
+* **ETS and Theta slightly over-cover at the city** (0.919 and 0.912), which with CRPS
+  this much better means their intervals are reasonable rather than inflated.
+
+---
+
 ## Conformal intervals
 
 ### What each method assumes
@@ -447,7 +512,40 @@ it.
 
 ### Cost per origin, idle machine
 
-37 series, 1,095-day trailing window, 12 cores, `n_jobs=-1`, 2026-09-12:
+Two machines have been measured, and the difference between them is large enough that a
+compute figure without its machine is not a number.
+
+**Machine B**, the one every result above was produced on from 2026-09-13: Intel Core
+i5-10400F, 6 cores and 12 threads, 16 GB, `n_jobs=-1`. From `headroom timings --step 28`,
+each model timed alone at three origins spread across the record:
+
+| Method | Seconds per origin | Range over the three origins |
+|---|---:|---|
+| ETS | 10.8 | 11 to 11 |
+| Theta | 9.1 | 9 to 9 |
+| MSTL | 11.5 | 11 to 12 |
+| AutoARIMA | 65.0 | 55 to 77 |
+
+The narrow ranges are the check that the machine was idle.
+
+**The weekly run itself**, ETS, Theta and MSTL in one batched call over all 964 origins:
+**7.79 hours wall clock, of which 4.80 hours was model fitting** (17.9 seconds per origin
+for all three, against 31.4 for their separate times added, so batching saved 43 percent).
+The other 3.0 hours was writing checkpoints: each save rewrites the whole compressed file,
+which grows to about 740 MB per model, so saving every five origins cost more and more as
+the run went on. That overhead is quadratic in the number of origins and should be fixed
+before a longer run, by writing each batch of origins to its own file.
+
+The per-model "model time" the score command prints (1.60 hours each) is that 4.80 hours
+split evenly, because a batched call cannot attribute time to one model. The separate
+per-model cost is the table above.
+
+A fit that started twelve worker processes at once failed on this machine with "the
+paging file is too small" until the Windows paging file was raised to a fixed 32 to 48 GB:
+each worker commits memory for numpy and the model libraries before it does any work.
+
+**Machine A**, the earlier laptop. 37 series, 1,095-day trailing window, 12 cores,
+`n_jobs=-1`, 2026-09-12:
 
 | Method | Seconds per origin |
 |---|---:|
@@ -495,3 +593,8 @@ therefore a real choice with a stated cost, not an implementation detail:
 The last column is what the choice costs scientifically: the headline chart resolves the
 March 2020 shift only as finely as the origins are spaced. Whichever is chosen is recorded
 here with the resolution it bought.
+
+Those estimates are machine A's. **Weekly was chosen** once machine B measured three to
+four times faster, which put weekly within one overnight run and kept the full resolution
+through 2020. AutoARIMA at weekly origins on machine B is about 17 hours alone and is
+deferred to its own run.

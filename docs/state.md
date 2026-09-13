@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**142 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**148 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -25,6 +25,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_data.py` | 20 | The loader, the borough judgement call, checks, the calendar |
 | `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
 | `test_hierarchy.py` | 14 | The summing matrix and coherence |
+| `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
 
 ### Built and measured
 
@@ -36,8 +37,8 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | Backtest | `headroom.backtest` | Done. 964 weekly origins, resumable checkpointing |
 | Baseline | `headroom.models.baselines` | Done. Seasonal naive with per-horizon empirical residual quantiles |
 | Conformal | `headroom.conformal` | Done. Split, adaptive (ACI), aggregated (AgACI) |
-| Statistical models | `headroom.models.stats` | **Wrapper built and tested; the backtest has not been run.** See the open decision |
-| CLI | `headroom.cli` | Done for what exists |
+| Statistical models | `headroom.models.stats` | Done for ETS, Theta, MSTL: 964 weekly origins, scored. AutoARIMA deferred |
+| CLI | `headroom.cli` | Done for what exists, including `score` |
 
 ### Not built yet
 
@@ -69,17 +70,38 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ---
 
-## Decided: weekly origins for the statistical models
+## Done: weekly origins for ETS, Theta and MSTL
 
-**Decided, and running.** ETS, Theta and MSTL at weekly origins (964) started
-2026-09-13 13:20, logging to `backtest/out/stats-weekly.log`. Early origins ran at about
-21 seconds each for all three together, projecting about 5.5 hours, well under the
-estimates below. Record the measured total in `docs/methods.md` when it finishes, and
-do not time anything else while it runs. The estimates and reasoning below are kept as
-the record of how the decision was made.
+**Run and scored, 2026-09-13.** 964 weekly origins, 13:20 to 21:07, 7.79 hours wall clock
+of which 4.80 hours was fitting and 3.0 hours was checkpoint writes. Full tables, with
+intervals, in `docs/methods.md` under "The statistical models". City, 90 percent nominal,
+each model's own quantiles with no conformal step:
+
+| Method | CRPS | Skill against seasonal naive | Coverage |
+|---|---|---|---|
+| Seasonal naive | 163.12 [152.58, 176.08] | 0 | 0.883 [0.870, 0.899] |
+| ETS | 133.92 [125.28, 143.53] | +0.179 [+0.164, +0.198] | 0.919 [0.908, 0.933] |
+| Theta | 135.89 [127.12, 145.79] | +0.167 [+0.151, +0.187] | 0.912 [0.901, 0.926] |
+| MSTL | 148.50 [137.26, 162.80] | +0.090 [+0.039, +0.130] | 0.781 [0.762, 0.799] |
+
+ETS and Theta beat the baseline by 17 to 25 percent at every level and cannot be separated
+from each other on these intervals; MSTL's intervals are far too narrow (0.70 to 0.78).
+
+The machine changed on 2026-09-13 (machine B in `docs/methods.md`: i5-10400F, 16 GB), and
+it fits three to four times faster than the laptop the estimates below were made on. That
+is why weekly was affordable. The estimates and reasoning below are kept as the record of
+how the decision was made.
+
+**Next for this area:**
+
+- AutoARIMA at weekly origins, about 17 hours alone on machine B. Fix the checkpoint
+  writes first (below), or it will spend hours rewriting its own file.
+- The paired ETS against Theta difference, bootstrapped directly.
+- Whether MSTL's narrow intervals come from ignoring seasonal-component uncertainty.
+- Rule C candidate 2, choosing the model by MAE, is now testable on these forecasts.
 
 The statistical models have to be back-tested over the record, and that is hours of CPU.
-The measured cost, on an **idle** machine, 37 series, 1,095-day window, 12 cores:
+The measured cost on machine A, **idle**, 37 series, 1,095-day window, 12 cores:
 
 | Model | Seconds per origin |
 |---|---:|
@@ -109,11 +131,16 @@ Whatever is chosen, run it **alone**. See the warning below.
 ### Run it with
 
     uv run headroom timings --step 28          # confirm the rate on an idle machine first
-    uv run headroom stats --models ETS,Theta,MSTL --step 28
+    uv run headroom stats --models ETS,Theta,MSTL --step 7
+    uv run headroom score --models ETS,Theta,MSTL --step 7    # about a minute
 
-It checkpoints to `backtest/out/` every five origins and resumes from where it stopped, so
-it is safe to interrupt. A rerun with the same options continues; a rerun with different
-options refuses rather than mixing two schedules into one table.
+It checkpoints to the output directory every five origins and resumes from where it
+stopped, so it is safe to interrupt. A rerun with the same options continues; a rerun with
+different options refuses rather than mixing two schedules into one table.
+
+**The output directory is `HEADROOM_OUT` if set, else `backtest/out/`.** On Peter's
+machine it is set to a folder outside OneDrive, because the repository lives in a synced
+folder and three weekly checkpoints are 2.2 GB. The data cache stays in `data/`.
 
 ### Warning: do not trust timings taken on a busy machine
 
@@ -216,7 +243,7 @@ anticipate, which is worth more than confirming it would have been.
 1. **Split conformal through the shift.** Evidence exists: worst window 0.582 against
    adaptive's 0.670. Real but smaller than the plan expected, because split conformal's
    rolling calibration window recalibrates it within about a year anyway.
-2. **Choosing the model by MAE.** Not yet testable; needs the statistical models.
+2. **Choosing the model by MAE.** Now testable: the ETS, Theta and MSTL forecasts exist.
 3. **A global neural model as the default.** Week 2.
 4. **New: adaptive conformal cannot widen past its calibration window.** Finding 1 above.
    This is the strongest candidate: it is measured, it is structural, it explains a
@@ -228,12 +255,14 @@ anticipate, which is worth more than confirming it would have been.
 ## Reproducing what exists
 
     uv sync --extra stats
-    uv run headroom data build      # ~1 h first time; cached per year afterwards
+    uv run headroom data build      # ~1 h first time on machine A, 90 s on machine B
     uv run headroom baseline        # ~4 min
     uv run headroom conformal       # ~10 min
+    uv run headroom stats --step 7  # ~8 h on machine B
+    uv run headroom score --step 7  # ~1 min
 
 `uv run headroom --help` lists everything. Data lives in `data/` and backtest output in
-`backtest/out/`; both are gitignored and neither is ever committed.
+`HEADROOM_OUT` or `backtest/out/`; both are gitignored and neither is ever committed.
 
 ---
 
@@ -254,6 +283,15 @@ anticipate, which is worth more than confirming it would have been.
   by an indexer or virus scanner, which is transient and clears in milliseconds. The save
   now retries the rename five times with a 0.2 second pause and only then gives up, because
   an unhandled one would end a nine-hour run. If it recurs, that retry is where to look.
+- **Checkpoint saves are quadratic in the run's length.** Each save rewrites the whole
+  compressed file, which reaches about 740 MB per model at 964 origins, so the weekly run
+  spent 3.0 of its 7.79 hours saving. Harmless for correctness. Fix before AutoARIMA by
+  writing each batch of origins to its own file. The comment in
+  `headroom.backtest.store.open_checkpoint` that calls these files "a few megabytes" is
+  from before weekly runs and is wrong at this size.
+- **Twelve worker processes need a large Windows paging file.** With the default
+  system-managed size, workers failed to start with "the paging file is too small". It is
+  now a fixed 32 to 48 GB on machine B.
 - **The refit schedule is documented but not applied.** `docs/methods.md` and
   `headroom.backtest.origins` say models are refitted every fourth origin, and the
   `Origin.refit` flag is computed, but `headroom.backtest.run` never reads it, so every

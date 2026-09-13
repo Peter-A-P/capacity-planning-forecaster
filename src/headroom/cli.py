@@ -10,8 +10,14 @@ then the expensive model comparison.
     headroom conformal           split, adaptive and aggregated conformal
     headroom stats               the statistical models (hours; resumable)
     headroom timings             measure cost per origin before committing to a run
+    headroom score               score finished checkpoints as skill against the baseline
+
+Backtest output goes to `backtest/out` unless `HEADROOM_OUT` names another directory. A
+full weekly checkpoint is about 740 MB per model, which is worth keeping out of a synced
+folder.
 """
 
+import os
 import time
 import warnings
 from datetime import date
@@ -23,7 +29,7 @@ import polars as pl
 import typer
 
 from headroom.backtest.origins import TRAIN_WINDOW_DAYS, Origins
-from headroom.backtest.run import run
+from headroom.backtest.run import Scores, run
 from headroom.conformal.aci import AdaptiveConformal
 from headroom.conformal.agaci import AggregatedConformal
 from headroom.conformal.apply import apply
@@ -37,7 +43,7 @@ from headroom.data.nyc_ems import (
 from headroom.hierarchy.build import Panel, build
 from headroom.models.baselines import SeasonalNaive
 from headroom.score import levels as lv
-from headroom.score.bootstrap import confidence_interval
+from headroom.score.bootstrap import confidence_interval, skill_interval
 from headroom.score.coverage import empirical_coverage
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -45,11 +51,44 @@ data_app = typer.Typer(help="Fetch and check the demand data.")
 app.add_typer(data_app, name="data")
 
 DATA = Path("data/nyc")
-OUT = Path("backtest/out")
 PANEL = DATA / "daily.parquet"
+
+#: Environment variable that relocates backtest output, and where it goes without one.
+OUT_VARIABLE = "HEADROOM_OUT"
+DEFAULT_OUT = Path("backtest/out")
 
 #: Nominal coverage the single-number tables report, matching PLAN.md section 1.
 MAIN_NOMINAL = 0.90
+
+
+def output_dir() -> Path:
+    """Return where backtest output is written and read.
+
+    Read at call time rather than import time, so a command always sees the environment
+    it was started in.
+
+    Returns:
+        ``HEADROOM_OUT`` if it is set and not blank, otherwise ``backtest/out``.
+    """
+    configured = os.environ.get(OUT_VARIABLE, "").strip()
+    return Path(configured) if configured else DEFAULT_OUT
+
+
+def _checkpoint_name(model: str, step: int, origins: Origins) -> str:
+    """Name a model's checkpoint file after the schedule that produced it.
+
+    Shared by the command that writes checkpoints and the one that scores them, so the
+    two cannot disagree about which file belongs to which run.
+
+    Args:
+        model: The model's name.
+        step: Days between origins.
+        origins: The schedule.
+
+    Returns:
+        The file name.
+    """
+    return f"{model}-step{step}-win{origins.train_window or 0}.npz"
 
 
 def _panel() -> Panel:
@@ -271,8 +310,8 @@ def stats(
     """Back-test the statistical models, checkpointing so it can be resumed.
 
     Hours, not minutes. Run `headroom timings` first and run this on an idle machine.
-    Stopping it is safe: every few origins are written to `backtest/out` and a rerun with
-    the same options picks up where it left off.
+    Stopping it is safe: every few origins are written to the output directory (see
+    `HEADROOM_OUT`) and a rerun with the same options picks up where it left off.
 
     Args:
         models: Comma-separated names from the catalogue.
@@ -293,16 +332,20 @@ def stats(
 
     panel, origins = _schedule(step, window)
     batch = BatchedModels(tuple(known[name] for name in wanted), n_jobs=-1)
-    OUT.mkdir(parents=True, exist_ok=True)
-    suffix = f"step{step}-win{origins.train_window or 0}"
+    out = output_dir()
+    out.mkdir(parents=True, exist_ok=True)
     points = {
         name: open_checkpoint(
-            OUT / f"{name}-{suffix}.npz", name, origins, panel.hierarchy.n_nodes, lv.SCORING
+            out / _checkpoint_name(name, step, origins),
+            name,
+            origins,
+            panel.hierarchy.n_nodes,
+            lv.SCORING,
         )
         for name in wanted
     }
 
-    typer.echo(f"{len(origins)} origins at step {step}, models {batch.names}")
+    typer.echo(f"{len(origins)} origins at step {step}, models {batch.names}, output {out}")
     typer.echo(
         f"resuming from origin {min(p.n_done for p in points.values())} of {len(origins)}"
     )
@@ -333,6 +376,95 @@ def stats(
     for point in points.values():
         point.save()
     typer.echo(f"done in {(time.perf_counter() - started) / 3600:.2f}h")
+
+
+@app.command()
+def score(
+    models: Annotated[
+        str, typer.Option(help="Comma-separated model names.")
+    ] = "ETS,Theta,MSTL",
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+) -> None:
+    """Score finished statistical-model checkpoints as skill against seasonal naive.
+
+    Seasonal naive is rerun on the same origins, so every comparison is paired. Each
+    number carries a 95 percent block-bootstrap interval. Coverage here is of each model's
+    own prediction quantiles, with no conformal step, so no coverage guarantee is claimed.
+
+    Args:
+        models: Comma-separated names of models whose checkpoints are complete.
+        step: Days between origins the checkpoints were built with.
+        window: Trailing training window they were built with, or 0 for expanding.
+
+    Raises:
+        typer.Exit: A checkpoint is missing or incomplete.
+    """
+    from headroom.backtest.driver import score_checkpoint
+    from headroom.backtest.store import open_checkpoint
+
+    wanted = [name.strip() for name in models.split(",") if name.strip()]
+    panel, origins = _schedule(step, window)
+    out = output_dir()
+
+    paths = {name: out / _checkpoint_name(name, step, origins) for name in wanted}
+    missing = [str(path) for path in paths.values() if not path.exists()]
+    if missing:
+        typer.echo(
+            f"no checkpoint at {missing}; run headroom stats first or set {OUT_VARIABLE}"
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"{len(origins)} origins at step {step}, output {out}")
+    typer.echo("seasonal naive on the same origins ...")
+    baseline_scores = run(
+        SeasonalNaive(), "Seasonal naive", panel.values, panel.hierarchy, origins
+    )
+    _print_scores(baseline_scores, None)
+
+    for name in wanted:
+        checkpoint = open_checkpoint(
+            paths[name], name, origins, panel.hierarchy.n_nodes, lv.SCORING
+        )
+        if not checkpoint.complete:
+            typer.echo(
+                f"{name}: {checkpoint.n_done} of {len(origins)} origins done; not scored"
+            )
+            raise typer.Exit(code=1)
+        scores = score_checkpoint(checkpoint, name, panel.values, panel.hierarchy, origins)
+        del checkpoint
+        _print_scores(scores, baseline_scores)
+
+
+def _print_scores(scores: Scores, baseline: Scores | None) -> None:
+    """Print one model's scores per hierarchy level, each with its interval.
+
+    Args:
+        scores: The model's scores.
+        baseline: Seasonal naive on the same origins, or None when printing the baseline.
+    """
+    nominal_at = list(scores.nominal).index(MAIN_NOMINAL)
+    typer.echo(f"{scores.model}  model time {scores.fit_seconds / 3600:.2f}h")
+    for level in ("city", "borough", "area"):
+        crps = scores.by_origin(scores.crps, level)
+        point, low, high = confidence_interval(crps)
+        line = f"  {level:8} CRPS {point:8.3f} [{low:7.3f}, {high:7.3f}]"
+        if baseline is not None:
+            s, s_low, s_high = skill_interval(crps, baseline.by_origin(baseline.crps, level))
+            line += f"  skill {s:+.4f} [{s_low:+.4f}, {s_high:+.4f}]"
+        cov, cov_low, cov_high = confidence_interval(
+            scores.by_origin(scores.hits[..., nominal_at].astype(np.float64), level)
+        )
+        wid, wid_low, wid_high = confidence_interval(
+            scores.by_origin(scores.widths[..., nominal_at], level)
+        )
+        line += (
+            f"  coverage90 {cov:.4f} [{cov_low:.4f}, {cov_high:.4f}]"
+            f"  width {wid:8.2f} [{wid_low:8.2f}, {wid_high:8.2f}]"
+        )
+        typer.echo(line)
 
 
 if __name__ == "__main__":  # pragma: no cover - entry point
