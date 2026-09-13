@@ -24,6 +24,7 @@ Not yet measured. The build fills these tables.
 |---|---|---|---|---|---|---|---|
 | Seasonal naive | _not yet_ | | | | | | |
 | Best statistical | | | | | | | |
+| LightGBM, global | | | | | | | |
 | N-HiTS | | | | | | | |
 | PatchTST | | | | | | | |
 | TimesFM, zero-shot (clean window only) | | | | | | | |
@@ -48,7 +49,8 @@ Not yet measured. The build fills these tables.
 
 See [PLAN.md](PLAN.md). Public emergency medical dispatch incidents are aggregated to daily
 counts on a city, borough and dispatch-area hierarchy. Seasonal naive and statistical
-models come first, then N-HiTS and PatchTST as global neural models, and TimesFM as a
+models come first, then a global LightGBM model on lag and calendar features, N-HiTS and
+PatchTST as global neural models, and TimesFM as a
 pretrained foundation model used zero-shot and scored only on dates after its
 pretraining data ends, so it cannot have seen them. All produce
 quantiles and are scored by CRPS and pinball loss in a rolling-origin backtest with block

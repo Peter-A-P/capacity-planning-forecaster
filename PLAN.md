@@ -50,6 +50,7 @@ The numbers a stranger can check:
 | Reconciliation: coherence error after MinT (must be zero to numerical precision) and the change in CRPS at each level from reconciling | Sites sum to the region, and reconciling helped or hurt, said which |
 | Realised staffing cost per method at three service levels against an oracle that knew demand, from the backtest | The forecast as a rota decision, priced |
 | Neural against statistical: paired CRPS difference of N-HiTS and PatchTST against the best statistical model, per level and per horizon, with CIs, and training time | Where the neural model earned its complexity and where it did not |
+| Gradient boosting against statistical and neural: the same paired comparison for a global LightGBM model, so the gain from learning across series is separated from the gain from deep learning | Whether the neural models beat what a practitioner would try first, or only the per-series baselines |
 | Foundation model against statistical: the same paired comparison for TimesFM used zero-shot, reported separately on origins after its pretraining data ends | Whether a pretrained model beats the baselines on data it cannot have seen |
 | Compute time per method for the full backtest | What the accuracy costs in minutes |
 
@@ -178,6 +179,46 @@ a third trained model and blur the one question it is here to answer.
 Before it is committed to: TimesFM must install and run under Python 3.13, which this
 project requires. If it does not, that is recorded and the addition is dropped.
 
+### 2.7b Gradient boosting, to separate global learning from deep learning (added 2026-09-13)
+
+A global LightGBM model is added on Peter's decision, through Nixtla MLForecast so it sits
+in the same stack as the statistical and neural models.
+
+It is here because the comparison otherwise confounds two things. The statistical models
+are fitted per series with no features; N-HiTS and PatchTST are global models across all
+37 series and are deep learning. If a neural model wins, nothing says whether the gain came
+from the architecture or from learning across series. A global gradient-boosted model has
+the second without the first, and it is what a forecasting practitioner reaches for first
+(the M5 competition was won by LightGBM, not a neural network). The neural verdict is
+sharper with it: "N-HiTS beat ETS" is weak, and "N-HiTS beat ETS, and LightGBM got most or
+none of that gain at a fraction of the cost" is the judgement this project exists to show.
+LightGBM over XGBoost because it is faster on CPU at this size and is what the published
+forecasting benchmarks use; MLForecast takes either, so the choice is cheap to revisit.
+
+The design:
+
+- **Features, all known at the origin.** Lags of the series (1, 7 and 14 days back, and
+  further weekly lags within the trailing window), rolling means over the window, day of
+  week, day of year, and public holidays from `headroom.data.calendar`. Calendar features
+  are within scope (section 2.8); weather and events are not. Every lag feature is built
+  from values at or before the origin, and a test asserts it.
+- **One global model per refit** across the 37 series, with the series identity and its
+  hierarchy level as categorical features, on the same 1,095-day trailing window.
+- **The 14-day horizon is direct:** the horizon is handled without feeding the model's own
+  forecasts back in as inputs, so errors do not compound across days. Whether that is one
+  model per horizon step or one model with the step as a feature is settled in week 2 and
+  recorded.
+- **Intervals come from conformal around its median forecast,** exactly as for TimesFM.
+  Quantile regression would need one model per level, and this project's 199-level
+  scoring grid makes that impractical; conformal keeps the interval method identical
+  across the models that do not produce a full quantile grid of their own.
+- **Its advantage is stated.** It is the only model that sees holidays. That is recorded
+  beside its result, not buried, because a skill number that owes part of its gain to
+  information the other models were denied has to say so.
+
+It is cheap: seconds per fit on this panel, so it is expected to refit at every origin.
+That is measured before it is relied on. PatchTST is dropped before it.
+
 ### 2.8 Out of scope, on purpose
 
 - Exogenous regressors (weather, holidays) beyond calendar features. Named in Deferred.
@@ -205,7 +246,8 @@ headroom/
   backtest/    origins.py (rolling origin, refit schedule), run.py, store.py (Parquet per method)
   models/      baselines.py (seasonal naive), stats.py (ETS, Theta, AutoARIMA, MSTL via StatsForecast),
                neural.py (N-HiTS, PatchTST via NeuralForecast, multi-quantile loss, CPU),
-               foundation.py (TimesFM zero-shot, quantile head, CPU; clean-window origins)
+               foundation.py (TimesFM zero-shot, median forecast, CPU; clean-window origins),
+               boosting.py (global LightGBM via MLForecast, lag and calendar features, direct horizon)
   conformal/   split.py, aci.py (adaptive conformal inference), agaci.py (aggregated experts), apply.py
   reconcile/   mint.py (point), probabilistic.py (bootstrap reconciliation), verify.py (coherence)
   score/       crps.py, pinball.py, coverage.py (rolling window), width.py, skill.py, bootstrap.py (block, over origins)
@@ -232,11 +274,12 @@ quantile equals the cost ratio on fixtures; the dashboard JSON validates against
 | Dates | Built | Done when |
 |---|---|---|
 | Sep 12 to 18 2026 | NYC loader, aggregation, checks, hierarchy; rolling-origin harness; baselines and statistical models with quantiles; CRPS, pinball, coverage, width, skill, block bootstrap; split and adaptive conformal; the coverage-through-shift chart | Skill table with CIs for every statistical method; coverage chart through March 2020 |
-| Sep 19 to 25 2026 | N-HiTS and PatchTST; TimesFM zero-shot with its clean window; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; Rule C; README | Every table in section 1 filled |
+| Sep 19 to 25 2026 | LightGBM global model; N-HiTS and PatchTST; TimesFM zero-shot with its clean window; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; Rule C; README | Every table in section 1 filled |
 | After Oct 25 2026 | Dashboard exported and deployed on 01's static pattern; `v0.1.0`; repository public | Dashboard live |
 
 First to drop if behind: the NHS dataset; PatchTST (N-HiTS stays as the named neural
-model, and TimesFM as the pretrained one); probabilistic reconciliation (point MinT with
+model, TimesFM as the pretrained one, and LightGBM as the global non-neural one);
+probabilistic reconciliation (point MinT with
 conformal on the reconciled series stays). TimesFM is dropped only if it will not run
 under Python 3.13, and that is recorded. The baselines, probabilistic scoring, coverage through the shift, reconciliation
 coherence, the decision layer and the neural verdict are not droppable.
@@ -269,6 +312,7 @@ free tier. No model vendor is called.
 | Hosting | Azure Static Web Apps free tier; custom domain on the owned domain | 0 |
 | Data | Open datasets | 0 |
 | TimesFM | Open weights, downloaded once, run on the laptop's CPU | 0 |
+| LightGBM | Open source, seconds per fit on the laptop's CPU | 0 |
 | Reserve | A rented CPU box for a day if the full backtest with refits is too slow locally | 10 |
 | **Total** | | **10** |
 
@@ -287,6 +331,7 @@ and the neural verdict are figures for the portfolio site.
 | Two weeks is tight and cleaning is underestimated | One dataset with a single aggregation step; the NHS set is optional and the first thing dropped |
 | Conformal subtleties under dependence | Adaptive methods designed for it; the assumption and its guarantee stated in the README next to the chart; split conformal kept to show the failure |
 | The neural models win everywhere, or nowhere | Either is reported with intervals; the verdict document is written whichever way |
+| LightGBM's lag or rolling features reach past the origin, which flatters it silently | Every feature is built from values at or before the origin, and a test corrupts the future of the panel and asserts no feature changes, the same pattern as the conformal feedback test |
 | TimesFM's pretraining overlaps the backtest, so its result is flattered | Scored separately on a clean window after its pretraining ends; the exposed full-history numbers are labelled and never pooled; no clean window means no reported result (section 2.7a) |
 | Reconciliation hurts leaf accuracy | Reported per level; MinT shrinkage parameter chosen on a validation window and stated |
 | The staffing numbers are taken as advice | Inputs are explicit and replaceable; the README says the ratio and costs are illustrative |
@@ -302,7 +347,9 @@ and the neural verdict are figures for the portfolio site.
    least one level, and its intervals are worse calibrated; the table shows the divergence.
 3. **A global neural model as the default forecaster.** Expected: competitive at the top
    level, no better or worse than the statistical models at the leaves, at many times the
-   compute; this is the neural verdict itself.
+   compute; this is the neural verdict itself. With LightGBM beside them (section 2.7b)
+   the candidate becomes sharper: if the global boosted model matches the neural models,
+   the gain was from learning across series and the deep learning bought nothing.
 4. **Scoring a pretrained model on history it was trained after** (added 2026-09-13).
    Expected: TimesFM looks markedly better on the full backtest, especially through
    March 2020, than on the clean window after its pretraining ends. The gap between the
@@ -320,6 +367,7 @@ Whichever produces the clearest evidence becomes `docs/rejected.md`.
 - [ ] MinT and probabilistic reconciliation; coherence verified at every origin; effect on accuracy per level reported
 - [ ] Decision layer: staffing at a stated service level from the reconciled distribution; newsvendor quantile from stated costs; realised cost per method against an oracle
 - [ ] N-HiTS and PatchTST against the best statistical model, paired with CIs; `docs/neural-verdict.md` says where they did not earn their complexity
+- [ ] LightGBM global model against the best statistical and best neural model, paired with CIs, its holiday features stated
 - [ ] TimesFM zero-shot against the best statistical model on its clean window, with the leak and its pretraining cutoff stated, in `docs/neural-verdict.md`
 - [ ] Static dashboard live at capacity.peterparker.ca
 - [ ] One rejected approach documented with evidence (Rule C)

@@ -44,6 +44,11 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 - **Neural models** (N-HiTS, PatchTST). `PLAN.md` section 2.7. Week 2. The refit
   schedule is set from a measured single-fit time on an idle machine; weekly refits are
   unlikely to be affordable on CPU.
+- **LightGBM, global** (added to the plan 2026-09-13). `PLAN.md` section 2.7b. Week 2.
+  Separates the gain from learning across series from the gain from deep learning.
+  Through MLForecast; lag and calendar features built only from values at or before the
+  origin, with a test that corrupts the future; direct 14-day horizon; intervals from
+  conformal around its median. Cheap, so build it before the neural models.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
   First check it installs under Python 3.13. Its pretraining postdates most origins, so
   it is scored separately on a clean window after its pretraining ends; read 2.7a before
