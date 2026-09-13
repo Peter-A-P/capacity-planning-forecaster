@@ -136,8 +136,17 @@ model from those two: they are trained on the 37 series, and TimesFM is used zer
 with no training on this data at all. It is included because "does a pretrained model
 beat the statistical baselines on real demand, and do its intervals hold through a
 shift" is the question practitioners are asking now, and the answer is worth more than
-another architecture trained from scratch. The version is fixed when it is installed and
-recorded in `docs/methods.md`.
+another architecture trained from scratch.
+
+**Pinned 2026-09-13: TimesFM 2.5, 200M parameters, Apache 2.0.** 3.0 has the same
+documented cutoffs and non-commercial weights. The pretraining corpus is recorded in
+`docs/methods.md`: the latest documented real data ends November 2023, none of it is NYC
+emergency dispatch data, and it does contain the 2020 shift in other series (Google
+mobility, influenza-like illness, Wikipedia and search behaviour). The primary clean
+window therefore starts 2023-12-01 (about 133 weekly origins), with a cross-check window
+from the model's release on 2025-09-15 (about 40). Its intervals are built by conformal
+around its median, not taken from its quantile head, which stops at the 0.1 and 0.9
+quantiles and would otherwise need an invented tail.
 
 **The leak.** Every other model here honours the backtest's guarantee that a forecast
 made at an origin sees nothing after it. TimesFM cannot. Its weights were trained years

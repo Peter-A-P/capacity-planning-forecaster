@@ -47,7 +47,9 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
   First check it installs under Python 3.13. Its pretraining postdates most origins, so
   it is scored separately on a clean window after its pretraining ends; read 2.7a before
-  reporting any TimesFM number.
+  reporting any TimesFM number. Version pinned to 2.5 and the corpus researched
+  (`docs/methods.md`, TimesFM section): clean window from 2023-12-01, cross-check from
+  2025-09-15, intervals from conformal around its median.
 - **Reconciliation** (MinT, probabilistic, coherence verified at every origin).
   `PLAN.md` section 2.5. Week 2. The summing matrix it needs is already in
   `headroom.hierarchy.spec` and tested.
@@ -247,6 +249,14 @@ anticipate, which is worth more than confirming it would have been.
   by an indexer or virus scanner, which is transient and clears in milliseconds. The save
   now retries the rename five times with a 0.2 second pause and only then gives up, because
   an unhandled one would end a nine-hour run. If it recurs, that retry is where to look.
+- **The refit schedule is documented but not applied.** `docs/methods.md` and
+  `headroom.backtest.origins` say models are refitted every fourth origin, and the
+  `Origin.refit` flag is computed, but `headroom.backtest.run` never reads it, so every
+  model is refitted at every origin. That is the fairer schedule and is what the running
+  statistical backtest does. Found 2026-09-13 while the run was in progress and
+  deliberately not changed under it. Before the neural models, decide which is true and
+  make the code and the docs agree: neural refits at every origin are unlikely to be
+  affordable, and the statistical models were meant to be held to the same schedule.
 - **The plan repository** (`../ml-portfolio-plan`) has `STATUS.md`, which is edited by
   several sessions at once. Check `git status` there before committing, and commit only
   the files you changed.

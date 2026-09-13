@@ -343,6 +343,102 @@ such rather than quietly attempted; nothing in this repository claims it yet.
 
 ---
 
+## TimesFM: what it was trained on, and where it can be scored
+
+`PLAN.md` section 2.7a adds TimesFM as a zero-shot forecaster and requires its pretraining
+corpus to be recorded here before any TimesFM number is reported. Researched 2026-09-13
+from the model cards, the TimesFM paper and the public pretraining collection itself.
+Nothing below has been measured on this panel yet.
+
+### Which version
+
+**TimesFM 2.5, 200M parameters, Apache 2.0** (`google/timesfm-2.5-200m-pytorch`, published
+2025-09). TimesFM 3.0 (`google/timesfm-3.0-pytorch`, published 2026-08-24) was considered
+and not chosen, for two reasons. Its model card gives the same data cutoffs as 2.5, so it
+buys nothing on the leak. And its weights are under the TimesFM Non-Commercial License
+v1.0, restricted to non-commercial, non-production use, which is an avoidable complication
+for a public repository when 2.5 is Apache 2.0.
+
+### The pretraining corpus, as documented
+
+The 2.5 model card lists four sources:
+
+| Source | Documented cutoff |
+|---|---|
+| Wikimedia pageviews | **November 2023** |
+| Google Trends top queries (about 22k queries) | End of 2022 |
+| GiftEvalPretrain (Salesforce; 88 datasets, about 4.5M series) | Varies; checked below |
+| Synthetic and augmented series | No calendar dates |
+
+The latest documented real data ends in **November 2023**.
+
+### What was checked independently
+
+GiftEvalPretrain is public, so its contents were listed and the constituent datasets
+that bear on this project were opened and their date ranges computed from each series'
+start and length:
+
+| Dataset | Relevance | Series | Period |
+|---|---|---:|---|
+| `covid_mobility` | Google COVID community mobility; the 2020 shock directly | 362 | 2020-02-15 to 2021-04-02 |
+| `covid19_energy` | Electricity demand through lockdown | 1 | 2017-03 to 2020-11 |
+| `cdc_fluview_ilinet` | US influenza-like illness, weekly; health demand through 2020 | 75 | 1997-10 to **2023-10** |
+| `project_tycho` | US notifiable disease counts | 1,258 | 1888 to 2014 |
+| `uber_tlc_daily` | New York City Uber pickups | 262 | 2015 |
+| `rideshare_with_missing` | New York City Uber and Lyft | 2,304 | 2018-11-26 to 2018-12-11 |
+| `godaddy` | Microbusiness density | 3,135 | 2019-08 to 2022-12 |
+
+`taxi_30min` (New York City taxi demand, 2015 to 2016 per its source) was not opened, at
+222 MB. The largest collections (`era5_*`, `cmip6_*`, `largest_*`, `buildings_900k`) were
+not opened either; their names and sources place them in 2021 or earlier.
+
+**Findings.** No constituent is NYC emergency medical dispatch, 911, or hospital data.
+New York City appears only as ride-hailing and taxi demand from 2015 to 2018. No
+constituent checked runs past November 2023. The corpus does contain the 2020 shift in
+several forms that bear directly on this project's headline: mobility collapsing in
+March 2020, influenza-like illness through the pandemic, and Wikipedia and search
+behaviour across it. TimesFM has not seen these ambulance counts, but it has learned what
+March 2020 looked like.
+
+**What cannot be checked.** The Wikipedia and Trends extracts and the synthetic series are
+not published, so the November 2023 cutoff rests on Google's documentation for those.
+
+### The clean windows
+
+A clean origin is one whose whole 14-day horizon falls after the pretraining data ends.
+
+| Window | First forecast day | Basis | Weekly origins to 2026-06-30 |
+|---|---|---|---:|
+| **Primary** | 2023-12-01 | Latest documented pretraining data | about 133 |
+| Cross-check | 2025-09-16 | Model release; the most conservative reading | about 40 |
+
+The primary window is the TimesFM result. The cross-check is a subset of the same
+forecasts and costs nothing. If TimesFM's skill is materially higher on the stretch
+between the two windows than after the release, that points to undocumented overlap and
+is reported as such. Full-history TimesFM numbers are labelled as exposed and never pooled
+with either window. Both clean windows fall entirely after the 2020 shift, so TimesFM
+contributes nothing to the coverage-through-the-shift claim.
+
+### Intervals come from conformal, not from its quantile head
+
+TimesFM 2.5 returns the mean and the 0.1 to 0.9 quantiles. This project scores on a grid
+from 0.005 to 0.995 and reports 95 percent intervals, which need the 0.025 and 0.975
+quantiles the model does not produce. Extrapolating the tails would make TimesFM's CRPS
+and 95 percent coverage depend on a rule chosen here. Instead its **median** is taken as
+the point forecast and its intervals are built by the same conformal methods as every
+other model's (split, adaptive, aggregated). Its own deciles are kept and may be reported
+beside the conformal intervals at 80 percent, the one level they reach, but they are not
+the result.
+
+Sources: [TimesFM 2.5 model card](https://huggingface.co/google/timesfm-2.5-200m-pytorch),
+[TimesFM 3.0 model card](https://huggingface.co/google/timesfm-3.0-pytorch),
+[TimesFM 2.0 model card](https://huggingface.co/google/timesfm-2.0-500m-pytorch),
+[Das et al., arXiv 2310.10688](https://arxiv.org/abs/2310.10688),
+[GiftEvalPretrain](https://huggingface.co/datasets/Salesforce/GiftEvalPretrain),
+[Aksu et al., arXiv 2410.10393](https://arxiv.org/abs/2410.10393).
+
+---
+
 ## Compute, and why these numbers are stated carefully
 
 `PLAN.md` section 1 promises "compute time per method" as a reported number, so it is
