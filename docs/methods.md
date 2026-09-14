@@ -344,6 +344,77 @@ has to reproduce these tables before any of them reaches the README.
 
 ---
 
+## LightGBM, global
+
+`PLAN.md` section 2.7b. Built 2026-09-13 in `headroom.models.boosting`; not yet run over
+the backtest.
+
+### What it sees, and the one advantage it has
+
+One model across all 37 series, refitted at every origin on the same 1,095-day trailing
+window. Each row is a series, an anchor day inside the window and a horizon step from 1
+to 14; the target is the value that many days after the anchor, divided by the series'
+mean over the window.
+
+| Feature | Read at |
+|---|---|
+| Horizon step, series, hierarchy level | Constant per row |
+| Four most recent same-weekday values for the target day | At or before the anchor |
+| Values on the anchor day and 1, 6 and 13 days before it | At or before the anchor |
+| Means over the last 7, 28 and 91 days | Ending at the anchor |
+| Day of week, day of year, US federal holiday, observed holiday | **The target day** |
+
+The calendar of the target day is known in advance and is not demand, so the backtest's
+guarantee holds: nothing after the origin is visible. `tests/test_boosting.py` corrupts
+every value after an anchor, for every horizon step, and asserts no feature changes.
+
+**It is the only model given holidays.** Any skill it has over ETS may owe part of its
+size to that, and every table that reports it says so. No feature names the year.
+
+Settings are fixed in the module and were not tuned on this backtest: an absolute-error
+objective (so it forecasts a median), learning rate 0.05, 63 leaves, at least 100 rows
+per leaf, 90 percent of features per tree, 400 rounds, seed 0.
+
+### Its distribution comes from its own past errors
+
+A model that forecasts a median has no quantile grid to score CRPS on. Its distribution
+at an origin is the forecast plus the order statistics of its own signed errors at the
+same node and horizon step over the previous 52 origins whose outcomes were known,
+`headroom.conformal.predictive`. The window, the two-origin feedback rule and the
+order-statistic convention are exactly those of the conformal intervals, so no new
+machinery enters the comparison. The assumption is exchangeability, which does not hold;
+coverage is measured, not guaranteed.
+
+Two costs, both stated wherever LightGBM is reported. The first 53 origins (2007-12-31 to
+2008-12-29) have no full window, so **every model is scored on origins 53 to 963 whenever
+LightGBM is in the table**, and those tables differ slightly from the all-origin tables
+above. And, like adaptive conformal, it cannot be wider than the widest error in its
+window, so the March 2020 ceiling applies to it too.
+
+Checked end to end before the run by giving the scorer ETS's medians in place of
+LightGBM's: the command reproduced the statistical tables above exactly when LightGBM was
+absent, and with it the baseline moved to its origins-53-onward values (city CRPS 165.12)
+as it should.
+
+### Why not MLForecast
+
+Planned, not used. A direct 14-day model needs the holiday flag of a different day for
+each horizon step, and the look-ahead test needs to see every feature of a row. A feature
+builder of about sixty lines does both visibly; a wrapper does them somewhere inside.
+
+### Cost, and the thread count
+
+One fit on machine B at origin 482: **28.7 seconds on six threads**, 34.1 on LightGBM's
+default, 130.2 when asked for twelve explicitly. Six threads is the physical core count
+and gave identical forecasts, so it is a speed setting only and is fixed. Histogram
+binning (`max_bin` 63) was faster again but changed the forecasts, so it is not a speed
+setting and was not used. Across three origins spread through the record, a fit took 31
+to 38 seconds on the default threads.
+
+At every weekly origin that is **about 7.7 hours**, not the seconds the plan expected.
+
+---
+
 ## Conformal intervals
 
 ### What each method assumes

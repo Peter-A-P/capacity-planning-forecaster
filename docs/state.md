@@ -14,12 +14,14 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**148 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**181 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
 |---|---:|---|
 | `test_backtest.py` | 38 | Origins and look-ahead, seasonal naive, the runner, checkpointing |
+| `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
+| `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
 | `test_score.py` | 34 | CRPS against the closed form, pinball, coverage, width, skill, block bootstrap |
 | `test_conformal.py` | 20 | The feedback rule, the conformal quantile, split, adaptive, aggregated |
 | `test_data.py` | 20 | The loader, the borough judgement call, checks, the calendar |
@@ -38,18 +40,20 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | Baseline | `headroom.models.baselines` | Done. Seasonal naive with per-horizon empirical residual quantiles |
 | Conformal | `headroom.conformal` | Done. Split, adaptive (ACI), aggregated (AgACI) |
 | Statistical models | `headroom.models.stats` | Done for ETS, Theta, MSTL: 964 weekly origins, scored. AutoARIMA deferred |
-| CLI | `headroom.cli` | Done for what exists, including `score` |
+| LightGBM | `headroom.models.boosting`, `headroom.conformal.predictive` | Built and tested; the weekly run has not been done |
+| CLI | `headroom.cli` | Done for what exists, including `boost` and `score` |
 
 ### Not built yet
 
 - **Neural models** (N-HiTS, PatchTST). `PLAN.md` section 2.7. Week 2. The refit
   schedule is set from a measured single-fit time on an idle machine; weekly refits are
   unlikely to be affordable on CPU.
-- **LightGBM, global** (added to the plan 2026-09-13). `PLAN.md` section 2.7b. Week 2.
-  Separates the gain from learning across series from the gain from deep learning.
-  Through MLForecast; lag and calendar features built only from values at or before the
-  origin, with a test that corrupts the future; direct 14-day horizon; intervals from
-  conformal around its median. Cheap, so build it before the neural models.
+- **LightGBM, global: built and tested, not yet run.** `PLAN.md` section 2.7b, "As built";
+  `docs/methods.md`, "LightGBM, global". Own feature builder (not MLForecast), dates
+  passed to the model, conformal predictive distribution from its own past errors, so any
+  table including it is scored on origins 53 to 963. A fit is 29 seconds on six cores, so
+  the full weekly run is about 7.7 hours: `uv run headroom boost --step 7`, then
+  `uv run headroom score --models ETS,Theta,MSTL,LightGBM`. Run it alone on an idle machine.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
   First check it installs under Python 3.13. Its pretraining postdates most origins, so
   it is scored separately on a clean window after its pretraining ends; read 2.7a before

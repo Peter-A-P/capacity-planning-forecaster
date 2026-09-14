@@ -39,6 +39,11 @@ stats = [
                                     # 2.x is the first line whose quantile output is a stable public API.
   "hierarchicalforecast>=1.0,<2.0", # MinT with shrinkage and the summing-matrix utilities
 ]
+boosting = [
+  "lightgbm>=4.7,<5.0",             # the global model of PLAN.md 2.7b; features are built in headroom.models.boosting
+                                    # rather than through MLForecast (the plan says why). 4.7 is the release tested
+                                    # here under Python 3.13, and 5.x may change the native training API.
+]
 neural = [
   "neuralforecast>=3.0,<4.0",       # N-HiTS and PatchTST as named global models with a multi-quantile loss
   "torch>=2.5,<3.0",                # CPU only; no GPU is bought for this project
@@ -124,7 +129,7 @@ disallow_incomplete_defs = false
 # No type stubs published, and vendoring stubs for them would rot faster than it helps.
 module = [
   "matplotlib.*", "statsforecast.*", "neuralforecast.*", "hierarchicalforecast.*",
-  "scipy.*",
+  "scipy.*", "lightgbm.*",
 ]
 ignore_missing_imports = true
 

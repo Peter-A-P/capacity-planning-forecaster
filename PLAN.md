@@ -181,8 +181,9 @@ project requires. If it does not, that is recorded and the addition is dropped.
 
 ### 2.7b Gradient boosting, to separate global learning from deep learning (added 2026-09-13)
 
-A global LightGBM model is added on Peter's decision, through Nixtla MLForecast so it sits
-in the same stack as the statistical and neural models.
+A global LightGBM model is added on Peter's decision. It was planned through Nixtla
+MLForecast so it would sit in the same stack as the statistical and neural models; it was
+built without it, for the reasons under "As built" below.
 
 It is here because the comparison otherwise confounds two things. The statistical models
 are fitted per series with no features; N-HiTS and PatchTST are global models across all
@@ -219,6 +220,29 @@ The design:
 It is cheap: seconds per fit on this panel, so it is expected to refit at every origin.
 That is measured before it is relied on. PatchTST is dropped before it.
 
+**As built, 2026-09-13.** Four decisions the design above left open or got wrong, each
+recorded in `docs/methods.md` with its evidence:
+
+- **Not through MLForecast.** The rows are built in `headroom.models.boosting` and passed
+  to LightGBM's native API. A direct model needs the holiday flag of the *target* day,
+  which is a different day for each horizon step, and the no-look-ahead test needs to
+  corrupt the future and see every feature of a row stay put. Both are a small tested
+  function of our own and opaque inside a wrapper. LightGBM is the model either way.
+- **The model is handed dates.** The backtest's forecaster interface passes demand only,
+  so a model cannot know when it is. This model gets the dates of its training window and
+  of the fourteen days ahead, never a demand value after the origin, and no feature
+  identifies the year.
+- **One model with the horizon step as a feature,** not one per step; each series divided
+  by its own training-window mean so the city does not swamp the dispatch areas.
+- **Its distribution is a conformal predictive distribution** from its own errors at the
+  previous 52 origins (`headroom.conformal.predictive`), with the same window, feedback
+  rule and order-statistic convention as the conformal intervals. The first 53 origins
+  have no distribution, so every comparison that includes LightGBM is made on origins 53
+  to 963 for all models.
+
+**Measured: 29 seconds a fit on six cores, not seconds,** so refitting at every weekly
+origin is about 7.7 hours, the same order as the statistical models.
+
 ### 2.8 Out of scope, on purpose
 
 - Exogenous regressors (weather, holidays) beyond calendar features. Named in Deferred.
@@ -247,7 +271,7 @@ headroom/
   models/      baselines.py (seasonal naive), stats.py (ETS, Theta, AutoARIMA, MSTL via StatsForecast),
                neural.py (N-HiTS, PatchTST via NeuralForecast, multi-quantile loss, CPU),
                foundation.py (TimesFM zero-shot, median forecast, CPU; clean-window origins),
-               boosting.py (global LightGBM via MLForecast, lag and calendar features, direct horizon)
+               boosting.py (global LightGBM, own lag and calendar features, direct horizon)
   conformal/   split.py, aci.py (adaptive conformal inference), agaci.py (aggregated experts), apply.py
   reconcile/   mint.py (point), probabilistic.py (bootstrap reconciliation), verify.py (coherence)
   score/       crps.py, pinball.py, coverage.py (rolling window), width.py, skill.py, bootstrap.py (block, over origins)
@@ -312,7 +336,7 @@ free tier. No model vendor is called.
 | Hosting | Azure Static Web Apps free tier; custom domain on the owned domain | 0 |
 | Data | Open datasets | 0 |
 | TimesFM | Open weights, downloaded once, run on the laptop's CPU | 0 |
-| LightGBM | Open source, seconds per fit on the laptop's CPU | 0 |
+| LightGBM | Open source, about 29 seconds per fit on a six-core desktop CPU | 0 |
 | Reserve | A rented CPU box for a day if the full backtest with refits is too slow locally | 10 |
 | **Total** | | **10** |
 

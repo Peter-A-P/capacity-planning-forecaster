@@ -10,6 +10,7 @@ then the expensive model comparison.
     headroom conformal           split, adaptive and aggregated conformal
     headroom stats               the statistical models (hours; resumable)
     headroom timings             measure cost per origin before committing to a run
+    headroom boost               the global LightGBM model (hours; resumable)
     headroom score               score finished checkpoints as skill against the baseline
 
 Backtest output goes to `backtest/out` unless `HEADROOM_OUT` names another directory. A
@@ -59,6 +60,10 @@ DEFAULT_OUT = Path("backtest/out")
 
 #: Nominal coverage the single-number tables report, matching PLAN.md section 1.
 MAIN_NOMINAL = 0.90
+
+#: Models whose checkpoints hold a median only, and the one-level grid they are stored on.
+POINT_MODELS = frozenset({"LightGBM"})
+POINT_LEVELS = np.array([0.5])
 
 
 def output_dir() -> Path:
@@ -379,31 +384,103 @@ def stats(
 
 
 @app.command()
+def boost(
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+    save_every: Annotated[int, typer.Option(help="Origins between checkpoint writes.")] = 10,
+) -> None:
+    """Back-test the global LightGBM model, refitting at every origin, resumably.
+
+    Hours, not minutes: about 29 seconds a fit on six cores (`docs/methods.md`). Run on an
+    idle machine; the total is reported as the model's compute. The checkpoint holds the
+    median forecast only; `headroom score` builds the distribution from its past errors.
+
+    Args:
+        step: Days between origins.
+        window: Trailing training window in days, or 0 to let it expand.
+        save_every: Origins between checkpoint writes.
+    """
+    from headroom.backtest.store import open_checkpoint
+    from headroom.models.boosting import GlobalLightGBM
+
+    panel, origins = _schedule(step, window)
+    model = GlobalLightGBM(levels=panel.hierarchy.levels)
+    out = output_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    checkpoint = open_checkpoint(
+        out / _checkpoint_name(model.name, step, origins),
+        model.name,
+        origins,
+        panel.hierarchy.n_nodes,
+        POINT_LEVELS,
+    )
+    typer.echo(f"{len(origins)} origins at step {step}, {model.name}, output {out}")
+    typer.echo(f"resuming from origin {checkpoint.n_done} of {len(origins)}")
+
+    started = time.perf_counter()
+    computed = 0
+    for origin in origins:
+        if checkpoint.done[origin.number]:
+            continue
+        # The model gets demand up to the origin and dates only, never a later value.
+        days = panel.days[origin.train.start : origin.index + 1 + origins.horizon]
+        began = time.perf_counter()
+        median = model.forecast(panel.values[:, origin.train], origins.horizon, days)
+        elapsed = time.perf_counter() - began
+        checkpoint.record(origin.number, median[..., np.newaxis], elapsed)
+        computed += 1
+        if computed % save_every == 0:
+            checkpoint.save()
+            rate = (time.perf_counter() - started) / computed
+            left = (len(origins) - checkpoint.n_done) * rate / 3600
+            typer.echo(
+                f"  origin {origin.number + 1}/{len(origins)} ({origin.day}) {elapsed:.0f}s  "
+                f"mean {rate:.0f}s  ~{left:.1f}h left"
+            )
+    checkpoint.save()
+    typer.echo(f"done in {(time.perf_counter() - started) / 3600:.2f}h")
+
+
+@app.command()
 def score(
     models: Annotated[
         str, typer.Option(help="Comma-separated model names.")
     ] = "ETS,Theta,MSTL",
+    against: Annotated[
+        str, typer.Option(help="Model every other is paired against; blank for none.")
+    ] = "ETS",
     step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
     window: Annotated[
         int, typer.Option(help="Training window; 0 expands.")
     ] = TRAIN_WINDOW_DAYS,
 ) -> None:
-    """Score finished statistical-model checkpoints as skill against seasonal naive.
+    """Score finished checkpoints as skill against seasonal naive, and paired.
 
     Seasonal naive is rerun on the same origins, so every comparison is paired. Each
-    number carries a 95 percent block-bootstrap interval. Coverage here is of each model's
-    own prediction quantiles, with no conformal step, so no coverage guarantee is claimed.
+    number carries a 95 percent block-bootstrap interval.
+
+    Coverage for the statistical models is of their own prediction quantiles, with no
+    conformal step, so no coverage guarantee is claimed. A model that forecasts only a
+    median (LightGBM) is given a conformal predictive distribution from its own past
+    errors (`headroom.conformal.predictive`), which exists only from the first origin
+    with a full calibration window. When one is included, **every model is scored on the
+    origins from that one onward**, so the tables stay paired and the numbers differ from
+    a run without it.
 
     Args:
         models: Comma-separated names of models whose checkpoints are complete.
+        against: The model each other model's CRPS is differenced against, per origin.
         step: Days between origins the checkpoints were built with.
         window: Trailing training window they were built with, or 0 for expanding.
 
     Raises:
         typer.Exit: A checkpoint is missing or incomplete.
     """
-    from headroom.backtest.driver import score_checkpoint
+    from headroom.backtest.run import score_forecasts
     from headroom.backtest.store import open_checkpoint
+    from headroom.conformal.predictive import first_valid_origin, predictive_quantiles
 
     wanted = [name.strip() for name in models.split(",") if name.strip()]
     panel, origins = _schedule(step, window)
@@ -413,37 +490,96 @@ def score(
     missing = [str(path) for path in paths.values() if not path.exists()]
     if missing:
         typer.echo(
-            f"no checkpoint at {missing}; run headroom stats first or set {OUT_VARIABLE}"
+            f"no checkpoint at {missing}; run headroom stats or boost first, or set "
+            f"{OUT_VARIABLE}"
         )
         raise typer.Exit(code=1)
 
-    typer.echo(f"{len(origins)} origins at step {step}, output {out}")
-    typer.echo("seasonal naive on the same origins ...")
-    baseline_scores = run(
-        SeasonalNaive(), "Seasonal naive", panel.values, panel.hierarchy, origins
+    point_models = [name for name in wanted if name in POINT_MODELS]
+    start = first_valid_origin(origins.horizon, step) if point_models else 0
+    listed = list(origins)
+    typer.echo(
+        f"origins {start} to {len(origins) - 1} of {len(origins)} at step {step} "
+        f"({listed[start].day} to {listed[-1].day}), output {out}"
     )
-    _print_scores(baseline_scores, None)
+    if point_models:
+        typer.echo(
+            f"{', '.join(point_models)}: median only, distribution from its own errors over "
+            "the previous 52 origins; the only model given holiday features"
+        )
 
+    actual = np.stack([panel.values[:, origin.target] for origin in origins])
+    baseline_scores = _from_origin(
+        run(SeasonalNaive(), "Seasonal naive", panel.values, panel.hierarchy, origins), start
+    )
+    everything: dict[str, Scores] = {}
     for name in wanted:
+        levels = POINT_LEVELS if name in POINT_MODELS else lv.SCORING
         checkpoint = open_checkpoint(
-            paths[name], name, origins, panel.hierarchy.n_nodes, lv.SCORING
+            paths[name], name, origins, panel.hierarchy.n_nodes, levels
         )
         if not checkpoint.complete:
             typer.echo(
                 f"{name}: {checkpoint.n_done} of {len(origins)} origins done; not scored"
             )
             raise typer.Exit(code=1)
-        scores = score_checkpoint(checkpoint, name, panel.values, panel.hierarchy, origins)
-        del checkpoint
-        _print_scores(scores, baseline_scores)
+        if name in POINT_MODELS:
+            quantiles = predictive_quantiles(
+                checkpoint.quantiles[..., 0], actual, lv.SCORING, step
+            ).quantiles
+        else:
+            quantiles = checkpoint.quantiles
+        everything[name] = score_forecasts(
+            name=name,
+            hierarchy=panel.hierarchy,
+            origins=origins,
+            quantiles=quantiles[start:],
+            actual=actual[start:],
+            scoring=lv.SCORING,
+            fit_seconds=float(checkpoint.seconds.sum()),
+        )
+        del checkpoint, quantiles
+
+    reference = everything.get(against.strip()) if against.strip() else None
+    _print_scores(baseline_scores, None, None)
+    for scores in everything.values():
+        paired = reference if reference is not None and reference is not scores else None
+        _print_scores(scores, baseline_scores, paired)
 
 
-def _print_scores(scores: Scores, baseline: Scores | None) -> None:
+def _from_origin(scores: Scores, start: int) -> Scores:
+    """Restrict a backtest's scores to the origins from ``start`` onward.
+
+    Args:
+        scores: Scores over every origin.
+        start: The first origin to keep.
+
+    Returns:
+        The same scores with every per-origin array sliced. Compute time is kept whole,
+        because it is what the full run cost.
+    """
+    from dataclasses import replace
+
+    if start == 0:
+        return scores
+    return replace(
+        scores,
+        crps=scores.crps[start:],
+        pinball=scores.pinball[start:],
+        absolute_error=scores.absolute_error[start:],
+        hits=scores.hits[start:],
+        widths=scores.widths[start:],
+        reporting_quantiles=scores.reporting_quantiles[start:],
+    )
+
+
+def _print_scores(scores: Scores, baseline: Scores | None, against: Scores | None) -> None:
     """Print one model's scores per hierarchy level, each with its interval.
 
     Args:
         scores: The model's scores.
         baseline: Seasonal naive on the same origins, or None when printing the baseline.
+        against: A model to difference CRPS against per origin, or None.
     """
     nominal_at = list(scores.nominal).index(MAIN_NOMINAL)
     typer.echo(f"{scores.model}  model time {scores.fit_seconds / 3600:.2f}h")
@@ -454,6 +590,11 @@ def _print_scores(scores: Scores, baseline: Scores | None) -> None:
         if baseline is not None:
             s, s_low, s_high = skill_interval(crps, baseline.by_origin(baseline.crps, level))
             line += f"  skill {s:+.4f} [{s_low:+.4f}, {s_high:+.4f}]"
+        if against is not None:
+            d, d_low, d_high = confidence_interval(
+                crps - against.by_origin(against.crps, level)
+            )
+            line += f"  minus {against.model} {d:+.3f} [{d_low:+.3f}, {d_high:+.3f}]"
         cov, cov_low, cov_high = confidence_interval(
             scores.by_origin(scores.hits[..., nominal_at].astype(np.float64), level)
         )
