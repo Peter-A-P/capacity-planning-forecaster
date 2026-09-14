@@ -13,6 +13,7 @@ then the expensive model comparison.
     headroom boost               the global LightGBM model (hours; resumable)
     headroom neural              N-HiTS, refitted on a schedule (hours; resumable)
     headroom reconcile           MinT on a model's medians: coherence and the change in CRPS
+    headroom decide              staffing from each forecast, priced against an oracle
     headroom score               score finished checkpoints as skill against the baseline
 
 Backtest output goes to `backtest/out` unless `HEADROOM_OUT` names another directory. A
@@ -28,6 +29,7 @@ from pathlib import Path
 from typing import Annotated
 
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import typer
 
@@ -634,6 +636,140 @@ def reconcile(
     del reconciled_quantiles
     _print_scores(base, None, None)
     _print_scores(reconciled, None, base)
+
+
+@app.command()
+def decide(
+    models: Annotated[
+        str, typer.Option(help="Comma-separated models with finished checkpoints.")
+    ] = "ETS,LightGBM",
+    reconciled: Annotated[
+        str, typer.Option(help="Quantile models also staffed from their MinT reconciliation.")
+    ] = "ETS",
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+) -> None:
+    """Staff every dispatch area from each forecast and price it against an oracle.
+
+    Inputs come from `inputs/decision.toml` and are illustrative. Each area is staffed for
+    each of the fourteen days ahead at the service level the costs imply and at the fixed
+    levels in the table; the oracle staffs what each day actually needed and costs
+    nothing. Reported per method: the realised cost per day summed over the areas, the
+    units staffed per day, and the paired difference in cost against the first model
+    listed. Every method is on origins 53 onward, where MinT and LightGBM's distribution
+    exist, so all rows are paired.
+
+    Args:
+        models: Models whose finished checkpoints are staffed from; the first is the
+            reference for paired differences. Seasonal naive is always added.
+        reconciled: Quantile models also staffed after MinT reconciliation.
+        step: Days between origins the checkpoints were built with.
+        window: Trailing training window they were built with, or 0 for expanding.
+
+    Raises:
+        typer.Exit: A checkpoint is missing or incomplete.
+    """
+    from headroom.backtest.store import open_checkpoint
+    from headroom.conformal.predictive import first_valid_origin, predictive_quantiles
+    from headroom.decide.newsvendor import (
+        critical_ratio,
+        demand_at,
+        load_inputs,
+        realised_cost,
+        units_for,
+    )
+    from headroom.reconcile.mint import reconcile_backtest, shift_quantiles
+
+    inputs = load_inputs()
+    implied = critical_ratio(inputs.cost_over, inputs.cost_under)
+    service = sorted({round(implied, 9), *inputs.service_levels})
+    wanted = [name.strip() for name in models.split(",") if name.strip()]
+    to_reconcile = {name.strip() for name in reconciled.split(",") if name.strip()}
+
+    panel, origins = _schedule(step, window)
+    start = first_valid_origin(origins.horizon, step)
+    listed = list(origins)
+    areas = panel.hierarchy.rows_at("area")
+    actual = np.stack([panel.values[:, origin.target] for origin in origins])
+    area_actual = actual[start:, areas, :]
+    typer.echo(
+        f"{len(areas)} dispatch areas, origins {start} to {len(origins) - 1} "
+        f"({listed[start].day} to {listed[-1].day})\n"
+        f"inputs (illustrative): {inputs.demand_per_unit:g} incidents per unit, "
+        f"cost {inputs.cost_over:g} per spare unit-day and {inputs.cost_under:g} per missing "
+        f"one, so the costs imply staffing at the {implied:.0%} quantile"
+    )
+
+    def reduce(quantiles: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        area_q = quantiles[start:, areas, :, :]
+        return np.stack([demand_at(area_q, lv.SCORING, level) for level in service], axis=-1)
+
+    demand: dict[str, npt.NDArray[np.float64]] = {}
+    naive = SeasonalNaive()
+    service_grid = np.array(service)
+    demand["Seasonal naive"] = np.stack(
+        [
+            naive.forecast(panel.values[:, origin.train], origins.horizon, service_grid)[areas]
+            for origin in listed[start:]
+        ]
+    )
+    for name in wanted:
+        levels = POINT_LEVELS if name in POINT_MODELS else lv.SCORING
+        path = output_dir() / _checkpoint_name(name, step, origins)
+        if not path.exists():
+            typer.echo(f"no checkpoint at {path}")
+            raise typer.Exit(code=1)
+        checkpoint = open_checkpoint(path, name, origins, panel.hierarchy.n_nodes, levels)
+        if not checkpoint.complete:
+            typer.echo(f"{name}: {checkpoint.n_done} of {len(origins)} origins done")
+            raise typer.Exit(code=1)
+        if name in POINT_MODELS:
+            quantiles = predictive_quantiles(
+                checkpoint.quantiles[..., 0], actual, lv.SCORING, step
+            ).quantiles
+            demand[name] = reduce(quantiles)
+        else:
+            demand[name] = reduce(checkpoint.quantiles)
+            if name in to_reconcile:
+                median_at = int(np.abs(lv.SCORING - 0.5).argmin())
+                base_median = checkpoint.quantiles[..., median_at]
+                mint = reconcile_backtest(base_median, actual, panel.hierarchy, step)
+                shifted = np.full_like(checkpoint.quantiles, np.nan)
+                shifted[start:] = shift_quantiles(
+                    checkpoint.quantiles[start:], base_median[start:], mint.medians[start:]
+                )
+                demand[f"{name} + MinT"] = reduce(shifted)
+                del shifted
+        del checkpoint
+
+    reference = wanted[0] if wanted else "Seasonal naive"
+    costs: dict[str, list[npt.NDArray[np.float64]]] = {}
+    for name, forecast in demand.items():
+        costs[name] = []
+        for j, _ in enumerate(service):
+            staffed = units_for(forecast[..., j], inputs.demand_per_unit)
+            daily = realised_cost(staffed, area_actual, inputs).sum(axis=1).mean(axis=1)
+            costs[name].append(daily)
+
+    oracle_units = units_for(area_actual, inputs.demand_per_unit).sum(axis=1).mean()
+    typer.echo(f"oracle: {oracle_units:.1f} units a day across the areas, cost 0")
+    for j, level in enumerate(service):
+        mark = " (implied by the costs)" if abs(level - implied) < 1e-9 else ""
+        typer.echo(f"service level {level:.0%}{mark}")
+        for name, forecast in demand.items():
+            daily = costs[name][j]
+            cost, low, high = confidence_interval(daily)
+            units = units_for(forecast[..., j], inputs.demand_per_unit).sum(axis=1).mean()
+            line = (
+                f"  {name:16} cost/day {cost:7.2f} [{low:7.2f}, {high:7.2f}]  "
+                f"units/day {units:6.1f}"
+            )
+            if name != reference and reference in costs:
+                d, d_low, d_high = confidence_interval(daily - costs[reference][j])
+                line += f"  minus {reference} {d:+6.2f} [{d_low:+6.2f}, {d_high:+6.2f}]"
+            typer.echo(line)
 
 
 @app.command()

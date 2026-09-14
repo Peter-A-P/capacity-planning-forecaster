@@ -129,6 +129,14 @@ the service level a planner chooses is shown next to the one the costs imply. Th
 backtest realises each method's staffing decision against actual demand and sums the cost,
 against an oracle. Inputs are a table in the README so a reader substitutes their own.
 
+**As built, 2026-09-14.** The inputs live in `inputs/decision.toml` (illustrative, and
+labelled so), which the code reads and the README will show. Staffing is per dispatch area
+per day, in whole units. At the cost-implied 80 percent, ETS's realised cost is 23 percent
+below seasonal naive's; MinT changes nothing at the areas; LightGBM ties ETS at 80 percent
+and costs 15 percent more at 95, where its wider upper tail staffs idle units. Staffing
+from the reconciled distribution is done for ETS; the probabilistic reconciliation it was
+meant to use is not built.
+
 ### 2.7 Neural models on CPU, named, and allowed to lose
 
 N-HiTS and PatchTST through NeuralForecast with a multi-quantile loss, trained as global

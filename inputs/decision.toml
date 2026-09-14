@@ -1,0 +1,18 @@
+# Decision inputs for `headroom decide`. Every number here is ILLUSTRATIVE.
+#
+# None of them comes from any emergency service, employer or published staffing standard.
+# They exist so the staffing arithmetic has something to run on; replace them with your
+# own and rerun. CLAUDE.md requires that they live here, in a table, and nowhere in code.
+
+# Incidents one staffed unit can serve in a day, per dispatch area.
+demand_per_unit = 10.0
+
+# Cost, in abstract cost units, of one unit-day staffed and not needed (paid, idle).
+cost_over = 1.0
+
+# Cost of one unit-day needed and not staffed (overtime, mutual aid, slower response).
+# Four times the cost of an idle unit, so the costs imply staffing at the 80th percentile.
+cost_under = 4.0
+
+# Service levels the tables also report, as fixed quantiles of forecast demand.
+service_levels = [0.80, 0.90, 0.95]

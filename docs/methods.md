@@ -519,6 +519,65 @@ forecasts. LightGBM, which stores a median, is not reconciled yet.
 
 ---
 
+## The decision layer: staffing, priced against an oracle
+
+`PLAN.md` section 2.6. Built and measured 2026-09-14 in `headroom.decide.newsvendor`;
+`headroom decide`.
+
+### The rule and the inputs
+
+Each of the 31 dispatch areas is staffed for each of the fourteen days ahead. Staffing to
+the demand quantile at the **critical ratio** ``cost_under / (cost_under + cost_over)``
+minimises expected cost; demand is converted to whole units by rounding up. The oracle
+staffs exactly what each day needed and costs nothing, so a method's **realised cost** is
+the cost of its mistakes. `tests/test_decide.py` checks by brute force on a skewed fixture
+that no other staffing level has lower expected cost, for three cost ratios.
+
+The inputs are a table, `inputs/decision.toml`, and **every value in it is illustrative**:
+10 incidents per staffed unit per day, a spare unit-day costing 1 and a missing one 4, so
+the costs imply the 80th percentile. They come from no emergency service or published
+standard. The comparison between methods is the result; the absolute costs are not.
+
+### Measured result
+
+Origins 53 to 963 for every method, so the reconciled and LightGBM rows are paired with
+the rest. Cost per day summed over the 31 areas, in cost units; the oracle needed 409.3
+units a day.
+
+| Service level | Method | Cost per day | Units per day | Minus ETS, paired |
+|---|---|---|---:|---|
+| **80%, implied by the costs** | Seasonal naive | 85.13 [82.74, 87.98] | 457.6 | +19.37 [+18.84, +19.88] |
+| | ETS | 65.76 [63.48, 68.60] | 448.8 | 0 |
+| | ETS + MinT | 65.79 [63.57, 68.52] | 448.8 | +0.03 [-0.11, +0.14] |
+| | LightGBM | 65.76 [63.38, 68.94] | 449.3 | -0.00 [-0.57, +0.69] |
+| 90% | Seasonal naive | 91.18 [88.92, 93.94] | 483.2 | +18.91 [+18.11, +19.57] |
+| | ETS | 72.27 [70.05, 75.09] | 468.7 | 0 |
+| | ETS + MinT | 72.29 [70.11, 75.06] | 468.8 | +0.02 [-0.09, +0.10] |
+| | LightGBM | 73.39 [70.86, 76.87] | 470.3 | +1.12 [-0.14, +2.43] |
+| 95% | Seasonal naive | 104.42 [102.12, 107.23] | 504.9 | +21.43 [+20.24, +22.35] |
+| | ETS | 82.99 [80.59, 85.93] | 485.1 | 0 |
+| | ETS + MinT | 83.01 [80.66, 85.89] | 485.2 | +0.02 [-0.08, +0.13] |
+| | LightGBM | 95.45 [90.64, 102.00] | 499.2 | +12.46 [+8.44, +17.90] |
+
+* **Staffing from ETS instead of seasonal naive cuts the cost of mistakes by 23 percent**
+  at the level the costs imply, and by about a fifth at every level.
+* **Every method is cheapest at the level the costs imply.** Staffing ETS to 95 percent
+  instead of 80 costs 26 percent more: the shortages it avoids are worth less than the
+  idle units it adds. The newsvendor result holds on the real record, not only on the
+  fixture.
+* **The decision layer separates two models CRPS could not.** LightGBM tied ETS on CRPS at
+  every level, and ties it here at 80 percent. At 95 percent it costs 12.46 more per day,
+  15 percent, because the upper tail of its conformal distribution is wider: it staffs 14
+  more units a day for the same demand. A planner who staffs to a high service level
+  would pay for that tail every day; the CRPS table averages it away.
+* **Reconciliation changes nothing at the areas,** matching its CRPS result: MinT moved the
+  city and boroughs, and staffing is set at the leaves.
+
+Staffing is set per area and the city's total is the sum of the areas' units, so the rota
+is coherent by construction whatever the forecasts were.
+
+---
+
 ## N-HiTS
 
 `PLAN.md` section 2.7. Built 2026-09-14 in `headroom.models.neural`; not yet run over the
