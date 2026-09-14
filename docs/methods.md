@@ -627,6 +627,36 @@ Checked end to end on the real panel before any real run, with the fit cut to fi
 training steps: fits landed on origins 0, 300, 600 and 900, every origin was forecast in
 about six minutes in total, and the checkpoint scored.
 
+### The GPU does not help, and a single fit depends on its arithmetic
+
+Machine B has an NVIDIA GeForce GTX 1650 (4 GB). It was tested 2026-09-14 in a separate
+environment with PyTorch 2.11 built for CUDA 12.8 (the newest CUDA build published), the
+same settings and the same origin as the CPU timing, while the monthly CPU run was
+already going:
+
+| Device | Fit | Forecast | City CRPS at origin 482 | Dispatch area CRPS |
+|---|---:|---:|---:|---:|
+| CPU, PyTorch 2.14 | 303 to 332 s | under 0.1 s | 159.5 | 9.52 |
+| GPU, PyTorch 2.11 + CUDA 12.8 | 309 s (362 on first use) | 0.15 s | 103.1 | 9.66 |
+
+**No speedup.** The GPU ran at 96 percent utilisation with 272 MiB of memory, so the card,
+not the CPU feeding it, was the limit. The backtest stays on the CPU, which is also what a
+reader reproducing it will have.
+
+**A second finding matters more.** Each device is deterministic (two GPU fits were
+identical to the last digit), yet the GPU's forecast at that origin scored a city CRPS of
+103.1 against the CPU's 159.5, while the dispatch areas barely moved. One fit of this
+network, from the same data and seed, lands in a noticeably different place depending on
+the arithmetic path (device, and PyTorch 2.11 against 2.14). A single origin's N-HiTS
+number therefore says little; only the average over hundreds of origins can be read, and
+how much of N-HiTS's result is the luck of a fit should be measured by refitting a sample
+of origins with a second seed. The statistical models do not have this sensitivity to
+anything like the same degree.
+
+The test ran on the GPU while the CPU backtest was fitting, from about 08:30 to 08:45, so
+the fit times the backtest recorded in that window are inflated and are excluded from its
+reported compute.
+
 ---
 
 ## Conformal intervals

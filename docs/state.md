@@ -48,10 +48,13 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ### Not built yet
 
-- **N-HiTS: built and tested, not yet run.** `docs/methods.md`, "N-HiTS". A fit is about
-  5.5 minutes, so `uv run headroom neural --refit-every 13` refits quarterly and forecasts
-  every week (about 7 hours); monthly (`--refit-every 4`) is about 22. Then
-  `uv run headroom score --models ETS,LightGBM,N-HiTS-refit13`. Needs
+- **N-HiTS: running.** Monthly refits (`headroom neural --refit-every 4`), started
+  2026-09-14 08:07, about 303 seconds a fit, expected to finish about 05:00 on 2026-09-15.
+  Log and resume script in `HEADROOM_OUT` (`nhits-refit4.log`, `run-nhits-refit4.ps1`).
+  Then `uv run headroom score --models ETS,LightGBM,N-HiTS-refit4`. The GTX 1650 was tested
+  and gave no speedup; exclude the 08:30 to 08:45 fits from its compute. **Follow-up:** a
+  second-seed refit of a sample of origins, because one fit's forecasts shift a lot with
+  the arithmetic path (`docs/methods.md`). Needs
   `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. Its tests skip where
   NeuralForecast is not installed, which includes CI. **PatchTST** not built.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
