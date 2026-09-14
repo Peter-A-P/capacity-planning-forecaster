@@ -84,8 +84,14 @@ each model's own quantiles with no conformal step:
 | Theta | 135.89 [127.12, 145.79] | +0.167 [+0.151, +0.187] | 0.912 [0.901, 0.926] |
 | MSTL | 148.50 [137.26, 162.80] | +0.090 [+0.039, +0.130] | 0.781 [0.762, 0.799] |
 
-ETS and Theta beat the baseline by 17 to 25 percent at every level and cannot be separated
-from each other on these intervals; MSTL's intervals are far too narrow (0.70 to 0.78).
+ETS and Theta beat the baseline by 17 to 25 percent at every level. **ETS is the best
+statistical model**: paired, it beats Theta by 1.3 to 1.5 percent of CRPS with intervals
+excluding zero at every level, so ETS is what later models are paired against. MSTL's
+median is 10 to 15 percent worse than ETS's and its intervals are 27 percent narrower,
+because StatsForecast adds the seasonal forecast to its quantiles as a fixed shift with no
+seasonal uncertainty (read from the source; coverage 0.68 one day ahead, 0.85 at 14).
+Ranking by MAE gives the same order as CRPS, so Rule C candidate 2 is not supported by
+these three models.
 
 The machine changed on 2026-09-13 (machine B in `docs/methods.md`: i5-10400F, 16 GB), and
 it fits three to four times faster than the laptop the estimates below were made on. That
@@ -96,9 +102,8 @@ how the decision was made.
 
 - AutoARIMA at weekly origins, about 17 hours alone on machine B. Fix the checkpoint
   writes first (below), or it will spend hours rewriting its own file.
-- The paired ETS against Theta difference, bootstrapped directly.
-- Whether MSTL's narrow intervals come from ignoring seasonal-component uncertainty.
-- Rule C candidate 2, choosing the model by MAE, is now testable on these forecasts.
+- Done 2026-09-13: ETS against Theta paired, MSTL's intervals explained, MAE ranking
+  checked. Tables in `docs/methods.md`; the report command must reproduce them.
 
 The statistical models have to be back-tested over the record, and that is hours of CPU.
 The measured cost on machine A, **idle**, 37 series, 1,095-day window, 12 cores:
@@ -243,7 +248,9 @@ anticipate, which is worth more than confirming it would have been.
 1. **Split conformal through the shift.** Evidence exists: worst window 0.582 against
    adaptive's 0.670. Real but smaller than the plan expected, because split conformal's
    rolling calibration window recalibrates it within about a year anyway.
-2. **Choosing the model by MAE.** Now testable: the ETS, Theta and MSTL forecasts exist.
+2. **Choosing the model by MAE.** Not supported by the statistical models: MAE and CRPS
+   rank ETS, Theta, MSTL identically at every level. Open for LightGBM and the neural
+   models.
 3. **A global neural model as the default.** Week 2.
 4. **New: adaptive conformal cannot widen past its calibration window.** Finding 1 above.
    This is the strongest candidate: it is measured, it is structural, it explains a

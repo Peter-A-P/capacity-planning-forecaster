@@ -282,17 +282,65 @@ What this says:
   CRPS, with intervals nowhere near zero. Skill grows down the hierarchy, from about 0.17
   at the city to 0.25 at the dispatch area, where series are noisier and a naive copy of
   last week carries more of that noise forward.
-* **ETS and Theta cannot be separated on this table.** Their skill intervals overlap at
-  every level. Ranking them needs the paired difference between the two, bootstrapped
-  directly, which the report command should compute rather than this table implying it.
-* **MSTL is the weakest of the three and its intervals are far too narrow**: 0.70 to 0.78
-  coverage at 90 percent nominal, with widths about 30 percent below the others. Its CRPS
-  still beats seasonal naive, so the median is useful and the spread is what fails. The
-  likely cause is that its intervals come from the trend model on the deseasonalised
-  series and carry none of the uncertainty in the seasonal components. That is a
-  hypothesis, not yet checked.
 * **ETS and Theta slightly over-cover at the city** (0.919 and 0.912), which with CRPS
   this much better means their intervals are reasonable rather than inflated.
+
+### ETS is the best statistical model, by a small margin that is real
+
+The skill intervals above overlap, but that is the wrong test: the two models were scored
+on the same origins, and origin-to-origin variation dwarfs the difference between them.
+The paired CRPS difference, Theta minus ETS, bootstrapped over origins as above:
+
+| Level | Theta minus ETS | Share of ETS CRPS | Origins where ETS is better |
+|---|---|---:|---:|
+| City | +1.97 [+1.37, +2.63] | 1.5% | 60.7% |
+| Borough | +0.42 [+0.30, +0.55] | 1.3% | 63.9% |
+| Dispatch area | +0.106 [+0.090, +0.123] | 1.3% | 78.5% |
+
+Every interval excludes zero. **ETS is the best statistical model at every level**, and it
+is the model every later comparison (LightGBM, the neural models, TimesFM) is paired
+against.
+
+### MSTL: both its median and its spread are worse, and the spread is structural
+
+Against ETS on the same origins, MSTL's median has **10 to 15 percent more absolute
+error** (1.10 at the city, 1.11 at the borough, 1.15 at the dispatch area) and its 90
+percent intervals are **27 to 28 percent narrower**. So the undercoverage is not a good
+median with a bad spread; both are worse, and the narrow spread is the larger failure.
+
+The cause of the spread, read from StatsForecast 2.1.1 (`statsforecast/models.py`,
+`MSTL.forecast`): MSTL fits its trend forecaster, AutoETS with no seasonal component, to
+the seasonally adjusted series (trend plus remainder), takes that model's prediction
+intervals, and then adds the seasonal forecast to every quantile as a fixed shift. **No
+uncertainty in the weekly or annual seasonal components reaches the interval.**
+
+The coverage pattern by horizon agrees with that reading. At the city, MSTL's 90 percent
+coverage is 0.68 one day ahead and rises steadily to 0.85 at fourteen days, while ETS
+stays between 0.89 and 0.95 throughout. The missing seasonal variance is a roughly fixed
+amount at every step; it matters most one day ahead, where the trend model's own interval
+is narrowest, and is partly masked at longer horizons as that interval grows.
+
+MSTL is kept in the tables as the model whose intervals should not be trusted without a
+conformal step, not dropped.
+
+### Choosing by MAE would not have misled here
+
+`PLAN.md` section 9, Rule C candidate 2, expected the model with the lowest absolute
+error of the median to differ from the one with the lowest CRPS on at least one level. On
+these three models it does not: ETS, then Theta, then MSTL, by both scores at every level.
+
+| Level | ETS | Theta | MSTL |
+|---|---|---|---|
+| City | 184.0 [173.0, 195.2] | 186.2 [175.1, 197.4] | 201.8 [188.1, 218.5] |
+| Borough | 44.43 [42.30, 46.89] | 44.82 [42.64, 47.22] | 49.45 [46.86, 52.72] |
+| Dispatch area | 11.51 [11.15, 11.96] | 11.63 [11.27, 12.07] | 13.29 [12.86, 13.84] |
+
+Mean absolute error of the median, with block-bootstrap intervals. The candidate is not
+supported by the statistical models. It stays open for the models still to come, where a
+point-accurate model with poorly calibrated intervals is more likely.
+
+Produced 2026-09-13 by a one-off analysis over the scored checkpoints. The report command
+has to reproduce these tables before any of them reaches the README.
 
 ---
 
