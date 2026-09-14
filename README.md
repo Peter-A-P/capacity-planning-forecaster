@@ -10,11 +10,10 @@ defensible number on both, site by site, rolling up to the region.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
 intervals and the statistical models (ETS, Theta, MSTL over 964 weekly origins) are
-measured in [docs/methods.md](docs/methods.md). The global LightGBM model is built and its
-backtest is running; the neural models, TimesFM, reconciliation and the decision layer are
-not built yet. The tables below stay empty until the report command fills them, which is
-the only thing allowed to. [docs/state.md](docs/state.md) is the working state of the
-build.
+measured in [docs/methods.md](docs/methods.md), and so is the global LightGBM model. The
+neural models, TimesFM, reconciliation and the decision layer are not built yet. The
+tables below stay empty until the report command fills them, which is the only thing
+allowed to. [docs/state.md](docs/state.md) is the working state of the build.
 
 ## Result
 

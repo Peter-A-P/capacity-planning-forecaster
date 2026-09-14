@@ -393,9 +393,10 @@ def boost(
 ) -> None:
     """Back-test the global LightGBM model, refitting at every origin, resumably.
 
-    Hours, not minutes: about 29 seconds a fit on six cores (`docs/methods.md`). Run on an
-    idle machine; the total is reported as the model's compute. The checkpoint holds the
-    median forecast only; `headroom score` builds the distribution from its past errors.
+    About two hours: roughly 7 seconds a fit on an idle six-core machine (`docs/methods.md`).
+    Run on an idle machine; the total is reported as the model's compute. The checkpoint
+    holds the median forecast only; `headroom score` builds the distribution from its past
+    errors.
 
     Args:
         step: Days between origins.

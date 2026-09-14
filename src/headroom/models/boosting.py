@@ -92,9 +92,9 @@ FEATURES: Final[tuple[str, ...]] = (
 CATEGORICAL: Final[tuple[str, ...]] = ("series", "level", "dow")
 
 #: The booster's settings. Fixed, and not tuned on the backtest (module docstring).
-#: ``num_threads`` is the machine's physical core count: on six cores and twelve threads a
-#: fit took 28.7 seconds on six threads against 34.1 on the default, with identical output,
-#: and 130 when asked for twelve explicitly (`docs/methods.md`). It changes speed only.
+#: ``num_threads`` is the machine's physical core count. It changes speed only: six threads
+#: and the default gave identical forecasts. Which is faster on an idle machine has not been
+#: measured; the comparison once recorded here was taken on a busy one (`docs/methods.md`).
 PARAMS: Final[dict[str, Any]] = {
     "objective": "l1",
     "learning_rate": 0.05,

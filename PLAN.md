@@ -240,8 +240,14 @@ recorded in `docs/methods.md` with its evidence:
   have no distribution, so every comparison that includes LightGBM is made on origins 53
   to 963 for all models.
 
-**Measured: 29 seconds a fit on six cores, not seconds,** so refitting at every weekly
-origin is about 7.7 hours, the same order as the statistical models.
+**Measured: about 7 seconds a fit on an idle six-core machine,** so refitting at every
+weekly origin is about 1.9 hours. A figure of 29 seconds recorded here on 2026-09-13 was
+taken on a busy machine and is retracted (`docs/methods.md`).
+
+**Result, 2026-09-14: a tie with ETS at every level.** Paired CRPS difference against
+ETS, origins 53 to 963: city -1.65 [-6.81, +5.98], borough -0.48 [-1.25, +0.62],
+dispatch area +0.007 [-0.067, +0.098]. Learning across series, with holidays, bought
+nothing measurable over the best per-series model.
 
 ### 2.8 Out of scope, on purpose
 
@@ -336,7 +342,7 @@ free tier. No model vendor is called.
 | Hosting | Azure Static Web Apps free tier; custom domain on the owned domain | 0 |
 | Data | Open datasets | 0 |
 | TimesFM | Open weights, downloaded once, run on the laptop's CPU | 0 |
-| LightGBM | Open source, about 29 seconds per fit on a six-core desktop CPU | 0 |
+| LightGBM | Open source, about 7 seconds per fit on a six-core desktop CPU | 0 |
 | Reserve | A rented CPU box for a day if the full backtest with refits is too slow locally | 10 |
 | **Total** | | **10** |
 

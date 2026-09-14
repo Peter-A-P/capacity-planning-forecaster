@@ -40,7 +40,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | Baseline | `headroom.models.baselines` | Done. Seasonal naive with per-horizon empirical residual quantiles |
 | Conformal | `headroom.conformal` | Done. Split, adaptive (ACI), aggregated (AgACI) |
 | Statistical models | `headroom.models.stats` | Done for ETS, Theta, MSTL: 964 weekly origins, scored. AutoARIMA deferred |
-| LightGBM | `headroom.models.boosting`, `headroom.conformal.predictive` | Built and tested; the weekly run has not been done |
+| LightGBM | `headroom.models.boosting`, `headroom.conformal.predictive` | Done. 964 weekly origins, scored: ties ETS at every level |
 | CLI | `headroom.cli` | Done for what exists, including `boost` and `score` |
 
 ### Not built yet
@@ -48,12 +48,6 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 - **Neural models** (N-HiTS, PatchTST). `PLAN.md` section 2.7. Week 2. The refit
   schedule is set from a measured single-fit time on an idle machine; weekly refits are
   unlikely to be affordable on CPU.
-- **LightGBM, global: built and tested, not yet run.** `PLAN.md` section 2.7b, "As built";
-  `docs/methods.md`, "LightGBM, global". Own feature builder (not MLForecast), dates
-  passed to the model, conformal predictive distribution from its own past errors, so any
-  table including it is scored on origins 53 to 963. A fit is 29 seconds on six cores, so
-  the full weekly run is about 7.7 hours: `uv run headroom boost --step 7`, then
-  `uv run headroom score --models ETS,Theta,MSTL,LightGBM`. Run it alone on an idle machine.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
   First check it installs under Python 3.13. Its pretraining postdates most origins, so
   it is scored separately on a clean window after its pretraining ends; read 2.7a before
@@ -73,6 +67,30 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---
+
+## Done: LightGBM, global, ties ETS
+
+**Run 2026-09-13 22:33 to 2026-09-14 01:12, scored 2026-09-14.** Tables in
+`docs/methods.md` under "LightGBM, global". Paired CRPS difference against ETS on origins
+53 to 963 (the first 53 have no calibration window for its distribution):
+
+| Level | LightGBM minus ETS | LightGBM skill against seasonal naive | Coverage at 90% |
+|---|---|---|---|
+| City | -1.65 [-6.81, +5.98] | +0.190 [+0.149, +0.223] | 0.897 |
+| Borough | -0.48 [-1.25, +0.62] | +0.222 [+0.196, +0.244] | 0.899 |
+| Dispatch area | +0.007 [-0.067, +0.098] | +0.252 [+0.239, +0.262] | 0.903 |
+
+A global model with holidays bought nothing measurable over ETS. That is the reference the
+neural models now have to beat to claim anything for deep learning.
+
+**Compute, corrected.** Fits were a steady 6.5 to 10.8 seconds from 23:45 onward; before
+that something else was using the cores. The clean cost is about 7 seconds a fit, about
+1.9 hours for a weekly run. The 29 seconds and 7.7 hours recorded on 2026-09-13 were a
+busy-machine measurement and are retracted in `docs/methods.md` and `PLAN.md`. **Lesson,
+again: run timings with nothing else open, including other Claude Code sessions.**
+
+Commands: `uv run headroom boost --step 7`, then
+`uv run headroom score --models ETS,Theta,MSTL,LightGBM`.
 
 ## Done: weekly origins for ETS, Theta and MSTL
 

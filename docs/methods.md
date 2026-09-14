@@ -346,8 +346,48 @@ has to reproduce these tables before any of them reaches the README.
 
 ## LightGBM, global
 
-`PLAN.md` section 2.7b. Built 2026-09-13 in `headroom.models.boosting`; not yet run over
-the backtest.
+`PLAN.md` section 2.7b. Built 2026-09-13 in `headroom.models.boosting`; run over all 964
+weekly origins overnight 2026-09-13 to 14.
+
+### Measured result: a tie with ETS
+
+`headroom score --models ETS,Theta,MSTL,LightGBM`, 2026-09-14. Because LightGBM's
+distribution needs a full calibration window, **every row here is scored on origins 53 to
+963** (2009-01-05 to 2026-06-15), so the baseline and ETS numbers differ slightly from the
+all-origin tables above. Intervals as above: 95 percent moving block bootstrap, paired
+where a difference is shown.
+
+| Level | Method | CRPS | Skill against seasonal naive | Minus ETS, paired | Coverage at 90% | Mean width |
+|---|---|---|---|---|---|---|
+| City | Seasonal naive | 165.12 [154.40, 177.73] | 0 | | 0.882 [0.868, 0.898] | 892.5 [869.5, 919.6] |
+| City | ETS | 135.40 [126.62, 144.61] | +0.180 [+0.165, +0.199] | 0 | 0.918 [0.907, 0.933] | 841.7 [811.9, 872.7] |
+| City | LightGBM | 133.75 [123.13, 148.35] | +0.190 [+0.149, +0.223] | -1.65 [-6.81, +5.98] | 0.897 [0.882, 0.913] | 839.0 [771.3, 936.1] |
+| Borough | Seasonal naive | 41.03 [38.94, 43.51] | 0 | | 0.889 [0.880, 0.899] | 224.1 [219.1, 229.3] |
+| Borough | ETS | 32.39 [30.67, 34.36] | +0.211 [+0.201, +0.223] | 0 | 0.911 [0.902, 0.921] | 194.2 [188.1, 201.2] |
+| Borough | LightGBM | 31.91 [29.99, 34.58] | +0.222 [+0.196, +0.244] | -0.48 [-1.25, +0.62] | 0.899 [0.888, 0.911] | 199.7 [186.7, 218.1] |
+| Dispatch area | Seasonal naive | 11.06 [10.74, 11.45] | 0 | | 0.896 [0.890, 0.901] | 62.0 [60.9, 63.1] |
+| Dispatch area | ETS | 8.27 [7.99, 8.62] | +0.252 [+0.246, +0.258] | 0 | 0.904 [0.897, 0.910] | 48.4 [47.3, 49.8] |
+| Dispatch area | LightGBM | 8.28 [7.98, 8.67] | +0.252 [+0.239, +0.262] | +0.007 [-0.067, +0.098] | 0.903 [0.896, 0.910] | 51.1 [49.2, 53.7] |
+
+Theta and MSTL on the same origins are within 0.02 of their all-origin skill and keep the
+same order; `headroom score` prints them.
+
+What this says:
+
+* **A global model with holidays bought nothing measurable over ETS.** Every paired
+  difference interval contains zero, at every level. The point estimates lean slightly to
+  LightGBM at the city and borough and not at all at the dispatch area, and the intervals
+  are several times wider than the leans. This is with the one advantage no other model
+  had, the holiday calendar of the day being forecast.
+* **Its intervals are wider than ETS's at the city** (the width interval runs from 771 to
+  936 against ETS's 812 to 873), as a distribution built from its own past errors carries
+  every large miss in its window forward for a year. Its coverage sits at nominal at every level
+  (0.897 to 0.903) where ETS over-covers at the city; that is the conformal construction
+  doing its job, not the booster.
+* **For the neural verdict this is the useful half.** If N-HiTS or PatchTST beat ETS, the
+  gain cannot be put down to learning across series or to holidays, because a global
+  model with both did not get it. If they tie, the plan's Rule C candidate 3 is supported
+  twice over.
 
 ### What it sees, and the one advantage it has
 
@@ -402,16 +442,26 @@ Planned, not used. A direct 14-day model needs the holiday flag of a different d
 each horizon step, and the look-ahead test needs to see every feature of a row. A feature
 builder of about sixty lines does both visibly; a wrapper does them somewhere inside.
 
-### Cost, and the thread count
+### Cost: about 7 seconds a fit, and a busy-machine measurement retracted
 
-One fit on machine B at origin 482: **28.7 seconds on six threads**, 34.1 on LightGBM's
-default, 130.2 when asked for twelve explicitly. Six threads is the physical core count
-and gave identical forecasts, so it is a speed setting only and is fixed. Histogram
-binning (`max_bin` 63) was faster again but changed the forecasts, so it is not a speed
-setting and was not used. Across three origins spread through the record, a fit took 31
-to 38 seconds on the default threads.
+**Measured over the run itself:** from origin 250 onward (23:45 to 01:12, machine idle)
+every fit took between 6.5 and 10.8 seconds, median about 7.3. Before 23:45 the medians
+per fifty origins were 10 to 24 seconds with minimums still near 7, which is the signature
+of contention rather than of the data: something else was using the cores for the first
+hour of the run. The run's recorded total, **2.65 hours**, includes that contention and
+is not a clean measurement of the model. The clean cost is **about 7 seconds a fit, or
+roughly 1.9 hours for 964 weekly origins**.
 
-At every weekly origin that is **about 7.7 hours**, not the seconds the plan expected.
+**Retracted:** the figures this section gave on 2026-09-13, 28.7 seconds a fit on six
+threads, 34.1 on the default and 130.2 on twelve, and a projected 7.7 hours. They were
+taken in the evening while other work shared the machine, which is exactly what "A timing
+taken on a busy machine is not a measurement" below warns against. The comparison between
+thread counts therefore says nothing reliable. Six threads stays the setting because it
+is the physical core count and gave identical forecasts; whether it is faster than twelve
+on an idle machine has not been measured.
+
+Histogram binning (`max_bin` 63) changed the forecasts, so it is not a speed setting and
+was not used. That observation does not depend on timing and stands.
 
 ---
 
