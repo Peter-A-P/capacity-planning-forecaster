@@ -12,6 +12,7 @@ then the expensive model comparison.
     headroom timings             measure cost per origin before committing to a run
     headroom boost               the global LightGBM model (hours; resumable)
     headroom neural              N-HiTS, refitted on a schedule (hours; resumable)
+    headroom reconcile           MinT on a model's medians: coherence and the change in CRPS
     headroom score               score finished checkpoints as skill against the baseline
 
 Backtest output goes to `backtest/out` unless `HEADROOM_OUT` names another directory. A
@@ -544,6 +545,95 @@ def neural_label(name: str, refit_every: int) -> str:
         For example ``"N-HiTS-refit13"``.
     """
     return f"{name}-refit{refit_every}"
+
+
+@app.command()
+def reconcile(
+    model: Annotated[str, typer.Option(help="A model with a quantile checkpoint.")] = "ETS",
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+) -> None:
+    """Reconcile a model's medians with MinT and report coherence and the change in CRPS.
+
+    ``W`` comes from the model's own errors at the same horizon step over the previous 52
+    origins, so the first 53 origins are not reconciled and every number here is on
+    origins 53 onward. Each node's quantiles move with its median.
+
+    Args:
+        model: The model whose finished checkpoint is reconciled.
+        step: Days between origins the checkpoint was built with.
+        window: Trailing training window it was built with, or 0 for expanding.
+
+    Raises:
+        typer.Exit: The checkpoint is missing, incomplete, or holds a median only.
+    """
+    from headroom.backtest.run import score_forecasts
+    from headroom.backtest.store import open_checkpoint
+    from headroom.reconcile.mint import reconcile_backtest, shift_quantiles
+
+    if model in POINT_MODELS:
+        typer.echo(f"{model} stores a median only; reconcile a quantile model")
+        raise typer.Exit(code=1)
+    panel, origins = _schedule(step, window)
+    path = output_dir() / _checkpoint_name(model, step, origins)
+    if not path.exists():
+        typer.echo(f"no checkpoint at {path}")
+        raise typer.Exit(code=1)
+    checkpoint = open_checkpoint(path, model, origins, panel.hierarchy.n_nodes, lv.SCORING)
+    if not checkpoint.complete:
+        typer.echo(f"{model}: {checkpoint.n_done} of {len(origins)} origins done")
+        raise typer.Exit(code=1)
+
+    actual = np.stack([panel.values[:, origin.target] for origin in origins])
+    median_at = int(np.abs(lv.SCORING - 0.5).argmin())
+    base_median = checkpoint.quantiles[..., median_at]
+    started = time.perf_counter()
+    result = reconcile_backtest(base_median, actual, panel.hierarchy, step)
+    took = time.perf_counter() - started
+    start = result.first_valid
+
+    base_breach = max(
+        panel.hierarchy.coherence_error(base_median[o, :, h])
+        for o in range(start, len(origins))
+        for h in range(origins.horizon)
+    )
+    intensity = result.intensity[start:]
+    typer.echo(
+        f"{model}, origins {start} to {len(origins) - 1}, reconciled in {took:.0f}s\n"
+        f"  coherence error, largest breach in incidents: base {base_breach:.1f}, "
+        f"reconciled {result.coherence_error:.2e}\n"
+        f"  shrinkage intensity: median {np.median(intensity):.3f}, "
+        f"range {intensity.min():.3f} to {intensity.max():.3f}"
+    )
+
+    reconciled_quantiles = shift_quantiles(
+        checkpoint.quantiles[start:], base_median[start:], result.medians[start:]
+    )
+    seconds = float(checkpoint.seconds.sum())
+    base = score_forecasts(
+        model,
+        panel.hierarchy,
+        origins,
+        checkpoint.quantiles[start:],
+        actual[start:],
+        lv.SCORING,
+        seconds,
+    )
+    del checkpoint
+    reconciled = score_forecasts(
+        f"{model} + MinT",
+        panel.hierarchy,
+        origins,
+        reconciled_quantiles,
+        actual[start:],
+        lv.SCORING,
+        seconds,
+    )
+    del reconciled_quantiles
+    _print_scores(base, None, None)
+    _print_scores(reconciled, None, base)
 
 
 @app.command()

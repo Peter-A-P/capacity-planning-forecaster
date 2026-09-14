@@ -111,6 +111,15 @@ the quantiles are coherent too. Coherence is verified numerically at every origi
 Conformal intervals are fitted on the reconciled forecasts, so the coverage claim is made
 about the numbers a planner would actually use.
 
+**As built, 2026-09-14 (point MinT).** Implemented in `headroom.reconcile.mint` rather than
+called through hierarchicalforecast, whose API wants in-sample fitted values the
+checkpoints do not hold; the shrinkage arithmetic is tested equal to the library's
+`mint_shrink`. ``W`` comes from each model's out-of-sample errors at the same horizon step
+over the previous 52 origins, not in-sample residuals. Quantiles move with their median.
+On ETS: coherence error from 515 incidents to 0, city CRPS -7.05 [-8.24, -4.80], borough
+-0.97 [-1.13, -0.69], dispatch area +0.007 [-0.009, +0.019]. The probabilistic
+reconciliation and conformal on the reconciled forecasts are still to build.
+
 ### 2.6 The decision layer is a newsvendor
 
 Staffing at a chosen service level is the demand quantile at that level divided by a

@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**188 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**197 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -23,6 +23,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_neural.py` | 6 | N-HiTS quantiles, forecasting between refits, determinism; skipped without the neural extra |
 | `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
 | `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
+| `test_reconcile.py` | 9 | MinT coherence for any input, equality with hierarchicalforecast, feedback rule |
 | `test_score.py` | 34 | CRPS against the closed form, pinball, coverage, width, skill, block bootstrap |
 | `test_conformal.py` | 20 | The feedback rule, the conformal quantile, split, adaptive, aggregated |
 | `test_data.py` | 20 | The loader, the borough judgement call, checks, the calendar |
@@ -58,9 +59,12 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   reporting any TimesFM number. Version pinned to 2.5 and the corpus researched
   (`docs/methods.md`, TimesFM section): clean window from 2023-12-01, cross-check from
   2025-09-15, intervals from conformal around its median.
-- **Reconciliation** (MinT, probabilistic, coherence verified at every origin).
-  `PLAN.md` section 2.5. Week 2. The summing matrix it needs is already in
-  `headroom.hierarchy.spec` and tested.
+- **Reconciliation: point MinT done, probabilistic not built.** `headroom reconcile
+  --model ETS`: coherence error 515 incidents to 0; city CRPS -7.05 [-8.24, -4.80],
+  borough -0.97 [-1.13, -0.69], dispatch area unchanged. Still to build: coherent sample
+  paths for the whole distribution, conformal on the reconciled forecasts, and
+  reconciling LightGBM (it stores a median, so its distribution has to be rebuilt from
+  reconciled errors).
 - **Decision layer** (newsvendor, staffing, realised cost against an oracle).
   `PLAN.md` section 2.6. Week 2.
 - **Charts and the report command.** The README results tables are still empty and must

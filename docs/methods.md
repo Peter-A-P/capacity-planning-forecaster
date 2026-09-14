@@ -465,6 +465,60 @@ was not used. That observation does not depend on timing and stands.
 
 ---
 
+## Reconciliation: MinT on ETS
+
+`PLAN.md` section 2.5. Built and measured 2026-09-14 in `headroom.reconcile.mint`;
+`headroom reconcile --model ETS`.
+
+### What is reconciled, and with what
+
+ETS forecasts each of the 37 series on its own, so its medians do not sum: at the worst
+origin and step, the city's median missed the sum of its dispatch areas' medians by **515
+incidents**. MinT replaces the base medians with the coherent set nearest to them in the
+metric of their error covariance ``W``, and each node's whole quantile forecast moves by
+the amount its median moved, so the spread is still ETS's own.
+
+``W`` is the Schafer and Strimmer shrinkage of the covariance of **ETS's own out-of-sample
+errors at the same horizon step over the previous 52 origins**, under the conformal
+feedback rule. The textbook uses in-sample one-step residuals; the checkpoints hold
+forecasts rather than fits, and a fourteen-day covariance is better estimated from
+fourteen-day errors. The shrinkage arithmetic matches hierarchicalforecast's `mint_shrink`
+to about 1e-8 (`tests/test_reconcile.py` holds it to 1e-6); three other common variants of
+the estimator differ from the library by up to 0.3 in ``W``, which is why the match was
+tested rather than assumed. Like LightGBM's distribution, it needs a full window, so the
+numbers below are on origins 53 to 963.
+
+### Measured result: better at the top, no cost at the leaves
+
+| Level | ETS CRPS | ETS + MinT CRPS | Paired change | Coverage at 90%, before and after |
+|---|---|---|---|---|
+| City | 135.40 [126.62, 144.61] | 128.35 [119.91, 139.12] | **-7.05 [-8.24, -4.80]** | 0.918, 0.932 |
+| Borough | 32.39 [30.67, 34.36] | 31.42 [29.72, 33.56] | **-0.97 [-1.13, -0.69]** | 0.911, 0.919 |
+| Dispatch area | 8.274 [7.991, 8.623] | 8.281 [8.006, 8.620] | +0.007 [-0.009, +0.019] | 0.904, 0.904 |
+
+* **Coherence error after MinT: 0.** Every reconciled median at every origin and step sums
+  exactly, against a largest breach of 515 incidents before.
+* **Reconciling improved the city by 5.2 percent and the boroughs by 3.0 percent**, both
+  intervals clear of zero, and left the dispatch areas unchanged. The aggregates borrow
+  from the leaves' information and the leaves lose nothing, which is the result MinT is
+  meant to deliver and not one it always does.
+* **Coverage rose at the city and borough** with identical widths, because the same spread
+  now sits around better medians. At the city that pushes ETS further above nominal
+  (0.932), so its intervals are now wider than they need to be there; the conformal step
+  is where that would be corrected.
+* The shrinkage intensity had a median of 0.27 (range 0.13 to 0.54): the sample covariance
+  of a year of errors needed real shrinking but was far from useless.
+* The whole reconciliation, 911 origins by 14 steps, took 5 seconds.
+
+### What it does not do yet
+
+Only medians are reconciled; the quantiles are shifted, not reconciled, and quantiles do not
+sum in general, so no claim is made about them. The probabilistic reconciliation in
+`PLAN.md` (coherent sample paths) is not built, and neither is conformal on the reconciled
+forecasts. LightGBM, which stores a median, is not reconciled yet.
+
+---
+
 ## N-HiTS
 
 `PLAN.md` section 2.7. Built 2026-09-14 in `headroom.models.neural`; not yet run over the
