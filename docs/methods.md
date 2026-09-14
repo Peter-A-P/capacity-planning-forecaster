@@ -465,6 +465,57 @@ was not used. That observation does not depend on timing and stands.
 
 ---
 
+## N-HiTS
+
+`PLAN.md` section 2.7. Built 2026-09-14 in `headroom.models.neural`; not yet run over the
+backtest.
+
+### What it is given
+
+One network across all 37 series, through NeuralForecast 3.2.2 on PyTorch 2.14 (CPU). It
+reads the last 112 days (sixteen weeks, eight horizons) of demand on synthetic dates, so,
+like the statistical models and unlike LightGBM, it has no calendar and no holidays. Each
+input window is scaled by NeuralForecast's robust scaler so the city does not swamp the
+dispatch areas. The loss is the multi-quantile loss on the 199-level scoring grid, so its
+output is the distribution CRPS is scored on; crossed quantile heads are sorted and the
+scorer reports how often they crossed.
+
+Fixed, not tuned on the backtest: NeuralForecast's N-HiTS architecture defaults (three
+stacks, two 512-unit layers each), 1,000 training steps, learning rate 0.001, all 37 series
+per batch, 1,024 windows per batch, seed 0, no validation split.
+
+### The refit schedule, and why it is not weekly
+
+| Measured 2026-09-14 on machine B | Seconds |
+|---|---:|
+| One fit at origin 482, 9 to 27 percent background load | 332 |
+| The same fit, busier machine | 399 |
+| One forecast from fitted weights | under 0.1 |
+
+Neither fit time is an idle measurement; both are recorded because the schedule had to be
+chosen from them. The two fits produced identical forecasts, so the model is deterministic
+on CPU at this seed.
+
+| Refit every | Fits | Estimated run |
+|---|---:|---:|
+| Origin (weekly, as ETS and LightGBM) | 964 | about 89 hours |
+| 4 origins (roughly monthly) | 241 | about 22 hours |
+| 13 origins (roughly quarterly) | 75 | about 7 hours |
+| 52 origins (yearly) | 19 | about 2 hours |
+
+Between refits the model forecasts each origin from that origin's own last 112 days with
+weights trained at the last refit, so nothing after an origin is ever used, and the
+forecast still sees the newest demand. What it does not get is weights that have learned
+from the most recent weeks. That is a handicap the weekly-refitted models do not carry.
+The schedule is part of the checkpoint's name (`N-HiTS-refit13`), and a resumed run refits
+on the same origin an uninterrupted one would have, so the two produce the same forecasts.
+
+Checked end to end on the real panel before any real run, with the fit cut to five
+training steps: fits landed on origins 0, 300, 600 and 900, every origin was forecast in
+about six minutes in total, and the checkpoint scored.
+
+---
+
 ## Conformal intervals
 
 ### What each method assumes

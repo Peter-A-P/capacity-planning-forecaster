@@ -14,12 +14,13 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**181 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**188 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
 |---|---:|---|
-| `test_backtest.py` | 38 | Origins and look-ahead, seasonal naive, the runner, checkpointing |
+| `test_backtest.py` | 39 | Origins and look-ahead, refit schedule, seasonal naive, the runner, checkpointing |
+| `test_neural.py` | 6 | N-HiTS quantiles, forecasting between refits, determinism; skipped without the neural extra |
 | `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
 | `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
 | `test_score.py` | 34 | CRPS against the closed form, pinball, coverage, width, skill, block bootstrap |
@@ -45,9 +46,12 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ### Not built yet
 
-- **Neural models** (N-HiTS, PatchTST). `PLAN.md` section 2.7. Week 2. The refit
-  schedule is set from a measured single-fit time on an idle machine; weekly refits are
-  unlikely to be affordable on CPU.
+- **N-HiTS: built and tested, not yet run.** `docs/methods.md`, "N-HiTS". A fit is about
+  5.5 minutes, so `uv run headroom neural --refit-every 13` refits quarterly and forecasts
+  every week (about 7 hours); monthly (`--refit-every 4`) is about 22. Then
+  `uv run headroom score --models ETS,LightGBM,N-HiTS-refit13`. Needs
+  `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. Its tests skip where
+  NeuralForecast is not installed, which includes CI. **PatchTST** not built.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
   First check it installs under Python 3.13. Its pretraining postdates most origins, so
   it is scored separately on a clean window after its pretraining ends; read 2.7a before
@@ -321,14 +325,10 @@ anticipate, which is worth more than confirming it would have been.
 - **Twelve worker processes need a large Windows paging file.** With the default
   system-managed size, workers failed to start with "the paging file is too small". It is
   now a fixed 32 to 48 GB on machine B.
-- **The refit schedule is documented but not applied.** `docs/methods.md` and
-  `headroom.backtest.origins` say models are refitted every fourth origin, and the
-  `Origin.refit` flag is computed, but `headroom.backtest.run` never reads it, so every
-  model is refitted at every origin. That is the fairer schedule and is what the running
-  statistical backtest does. Found 2026-09-13 while the run was in progress and
-  deliberately not changed under it. Before the neural models, decide which is true and
-  make the code and the docs agree: neural refits at every origin are unlikely to be
-  affordable, and the statistical models were meant to be held to the same schedule.
+- **The refit schedule, resolved 2026-09-14.** The statistical models and LightGBM refit
+  at every origin and ignore the flag; N-HiTS refits on it (`headroom neural`), and
+  `headroom.backtest.origins` now says exactly that. The neural model carries the
+  handicap, never the cheap ones.
 - **The plan repository** (`../ml-portfolio-plan`) has `STATUS.md`, which is edited by
   several sessions at once. Check `git status` there before committing, and commit only
   the files you changed.

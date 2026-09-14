@@ -11,6 +11,7 @@ then the expensive model comparison.
     headroom stats               the statistical models (hours; resumable)
     headroom timings             measure cost per origin before committing to a run
     headroom boost               the global LightGBM model (hours; resumable)
+    headroom neural              N-HiTS, refitted on a schedule (hours; resumable)
     headroom score               score finished checkpoints as skill against the baseline
 
 Backtest output goes to `backtest/out` unless `HEADROOM_OUT` names another directory. A
@@ -442,6 +443,107 @@ def boost(
             )
     checkpoint.save()
     typer.echo(f"done in {(time.perf_counter() - started) / 3600:.2f}h")
+
+
+@app.command()
+def neural(
+    refit_every: Annotated[
+        int, typer.Option(help="Origins between refits; forecasts are made at every origin.")
+    ] = 13,
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+    save_every: Annotated[int, typer.Option(help="Origins between checkpoint writes.")] = 13,
+) -> None:
+    """Back-test N-HiTS, refitting on a schedule and forecasting every origin, resumably.
+
+    A fit is minutes on CPU and a forecast from fitted weights is a fraction of a second,
+    so the model is refitted every ``refit_every`` origins and forecasts each origin in
+    between from its own fresh inputs. The checkpoint is named for the schedule, so
+    results from two schedules cannot be mixed. Each origin's recorded time is its share
+    of the fit it used plus its own forecast.
+
+    Args:
+        refit_every: Origins between refits.
+        step: Days between origins.
+        window: Trailing training window in days, or 0 to let it expand.
+        save_every: Origins between checkpoint writes.
+    """
+    import logging
+
+    from headroom.backtest.store import open_checkpoint
+    from headroom.models.neural import NHiTS
+
+    warnings.filterwarnings("ignore")
+    for noisy in ("pytorch_lightning", "lightning.pytorch", "lightning_fabric"):
+        logging.getLogger(noisy).setLevel(logging.ERROR)
+
+    panel = _panel()
+    origins = Origins(
+        days=panel.days, step=step, train_window=window or None, refit_every=refit_every
+    )
+    model = NHiTS(levels=lv.SCORING, horizon=origins.horizon)
+    label = neural_label(model.name, refit_every)
+    out = output_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    checkpoint = open_checkpoint(
+        out / _checkpoint_name(label, step, origins),
+        label,
+        origins,
+        panel.hierarchy.n_nodes,
+        lv.SCORING,
+    )
+    listed = list(origins)
+    typer.echo(
+        f"{len(origins)} origins at step {step}, {label}: {origins.n_refits} fits, output {out}"
+    )
+    typer.echo(f"resuming from origin {checkpoint.n_done} of {len(origins)}")
+
+    started = time.perf_counter()
+    fitted_for: int | None = None
+    fit_seconds = 0.0
+    computed = 0
+    for origin in origins:
+        if checkpoint.done[origin.number]:
+            continue
+        refit_at = origins.refit_for(origin.number)
+        if fitted_for != refit_at:
+            began = time.perf_counter()
+            model.fit(panel.values[:, listed[refit_at].train])
+            fit_seconds = time.perf_counter() - began
+            fitted_for = refit_at
+            typer.echo(
+                f"  fit at origin {refit_at} ({listed[refit_at].day}) {fit_seconds:.0f}s"
+            )
+        began = time.perf_counter()
+        quantiles = model.predict(panel.values[:, origin.train])
+        share = fit_seconds / refit_every
+        checkpoint.record(origin.number, quantiles, share + time.perf_counter() - began)
+        computed += 1
+        if computed % save_every == 0:
+            checkpoint.save()
+            rate = (time.perf_counter() - started) / computed
+            left = (len(origins) - checkpoint.n_done) * rate / 3600
+            typer.echo(
+                f"  origin {origin.number + 1}/{len(origins)} ({origin.day})  "
+                f"mean {rate:.0f}s  ~{left:.1f}h left"
+            )
+    checkpoint.save()
+    typer.echo(f"done in {(time.perf_counter() - started) / 3600:.2f}h")
+
+
+def neural_label(name: str, refit_every: int) -> str:
+    """Name a neural run after its refit schedule, for its checkpoint and its tables.
+
+    Args:
+        name: The model's name.
+        refit_every: Origins between refits.
+
+    Returns:
+        For example ``"N-HiTS-refit13"``.
+    """
+    return f"{name}-refit{refit_every}"
 
 
 @app.command()

@@ -129,6 +129,19 @@ the neural models do not beat the statistical ones at the leaf level, or only at
 the README says exactly that. Judgement reads as seniority; "deep learning won" reads as
 naive.
 
+**As built, 2026-09-14 (N-HiTS).** "Minutes per fit" was right and decides the design: a
+fit on the 37 series is about 5.5 minutes on the six-core machine (332 seconds at 9 to 27
+percent background load; not an idle measurement), and a forecast from fitted weights is
+under a tenth of a second. Refitting at every weekly origin would be about 89 hours. So
+`headroom neural` refits every *k* origins and forecasts every origin from its own fresh
+inputs with the last fitted weights; *k* is in the checkpoint's name and in every table
+that reports it. That is a disadvantage to the neural model, which the statistical and
+LightGBM models (refitted weekly) did not carry, so a neural win is conservative and a
+neural loss has to be read with it. The multi-quantile loss is trained on the project's
+own 199-level scoring grid, and the model sees demand only on synthetic dates, like the
+statistical models: no holidays, unlike LightGBM. The refit flag in
+`headroom.backtest.origins`, which nothing read before, is what drives it.
+
 ### 2.7a A pretrained foundation model, with the leak stated (added 2026-09-13)
 
 TimesFM, Google Research's pretrained time-series foundation model, is added as a third
@@ -275,7 +288,7 @@ headroom/
   hierarchy/   spec.py (summing matrix), build.py
   backtest/    origins.py (rolling origin, refit schedule), run.py, store.py (Parquet per method)
   models/      baselines.py (seasonal naive), stats.py (ETS, Theta, AutoARIMA, MSTL via StatsForecast),
-               neural.py (N-HiTS, PatchTST via NeuralForecast, multi-quantile loss, CPU),
+               neural.py (N-HiTS via NeuralForecast, multi-quantile loss, CPU, scheduled refits),
                foundation.py (TimesFM zero-shot, median forecast, CPU; clean-window origins),
                boosting.py (global LightGBM, own lag and calendar features, direct horizon)
   conformal/   split.py, aci.py (adaptive conformal inference), agaci.py (aggregated experts), apply.py

@@ -23,11 +23,15 @@ times the compute and adds almost no information, while making the dependence be
 origins that the block bootstrap has to handle far worse. Weekly spacing also holds the
 day of week fixed across origins, so no method is flattered by having more Mondays.
 
-**Refitting.** Every fourth origin, so roughly monthly. Refitting at every origin is the
-ideal and is what a fair comparison wants; refitting monthly is what the CPU budget in
-PLAN.md section 6 allows for the neural models, and applying the same schedule to the
-statistical models keeps the comparison fair rather than giving the cheap models an
-advantage the expensive ones were denied.
+**Refitting.** The schedule carries a refit flag every :attr:`Origins.refit_every` origins,
+and only models too expensive to refit weekly read it. Refitting at every origin is the
+ideal and what a fair comparison wants, and it is what the statistical models and the
+global LightGBM model do: both are cheap enough, so they ignore the flag. N-HiTS costs
+minutes a fit, so its backtest refits on the flag and forecasts every origin in between
+from fresh inputs with the last fitted weights. That is a disadvantage to the neural
+model, never an advantage, and its results say which schedule it ran on. The default of
+four origins, roughly monthly, is the plan's original figure; the neural command sets its
+own.
 
 **How much history each forecast sees.** A trailing window of
 :data:`TRAIN_WINDOW_DAYS`, not everything back to 2005. Two reasons and they point the
@@ -206,6 +210,26 @@ class Origins:
     def n_refits(self) -> int:
         """How many model fits the schedule costs."""
         return -(-len(self) // self.refit_every)
+
+    def refit_for(self, number: int) -> int:
+        """Return the origin whose fit a forecast at ``number`` uses.
+
+        The most recent refit origin at or before it. A run resumed between refits fits
+        on that origin's window, so it produces the same forecasts as one that was never
+        interrupted.
+
+        Args:
+            number: The forecasting origin's number.
+
+        Returns:
+            The refit origin's number.
+
+        Raises:
+            ValueError: ``number`` is not an origin in this schedule.
+        """
+        if not 0 <= number < len(self):
+            raise ValueError(f"origin {number} is outside 0 to {len(self) - 1}")
+        return number - number % self.refit_every
 
     def covering(self, day: date) -> list[int]:
         """Return the numbers of the origins whose horizon covers a day.
