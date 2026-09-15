@@ -1,4 +1,4 @@
-"""N-HiTS, fitted once and forecasting many times.
+"""N-HiTS and PatchTST, fitted once and forecasting many times.
 
 Skipped where NeuralForecast is not installed. CI does not install the neural extra: the
 default Linux PyTorch wheel carries CUDA and is gigabytes, for tests that run on CPU.
@@ -13,7 +13,7 @@ import pytest
 
 pytest.importorskip("neuralforecast")
 
-from headroom.models.neural import SETTINGS, NHiTS
+from headroom.models.neural import DEFAULTS, GlobalNeural
 
 HORIZON = 7
 LEVELS = np.array([0.1, 0.25, 0.5, 0.75, 0.9])
@@ -26,16 +26,16 @@ def _quiet():
         logging.getLogger(noisy).setLevel(logging.ERROR)
 
 
-def _tiny(**overrides) -> NHiTS:
+def _tiny(name: str = "N-HiTS", **overrides) -> GlobalNeural:
     settings = {
-        **SETTINGS,
+        **DEFAULTS[name],
         "input_size": 28,
         "max_steps": 30,
         "windows_batch_size": 64,
         "batch_size": 3,
         **overrides,
     }
-    return NHiTS(levels=LEVELS, horizon=HORIZON, settings=settings)
+    return GlobalNeural(levels=LEVELS, horizon=HORIZON, name=name, settings=settings)
 
 
 def _panel(n_days: int = 200, seed: int = 0) -> np.ndarray:
@@ -46,8 +46,9 @@ def _panel(n_days: int = 200, seed: int = 0) -> np.ndarray:
     return np.asarray(scale * weekly * noise, dtype=np.float64)
 
 
-def test_forecasts_are_quantiles_on_the_requested_grid():
-    model = _tiny()
+@pytest.mark.parametrize("name", ["N-HiTS", "PatchTST"])
+def test_forecasts_are_quantiles_on_the_requested_grid(name):
+    model = _tiny(name)
     model.fit(_panel())
     q = model.predict(_panel())
     assert q.shape == (3, HORIZON, LEVELS.size)
@@ -66,8 +67,19 @@ def test_a_forecast_between_refits_reads_the_new_window_not_the_fitted_one():
     np.testing.assert_array_equal(later, model.predict(panel[:, :250]))
 
 
-def test_the_same_fit_twice_gives_the_same_forecast():
-    first, second = _tiny(), _tiny()
+def test_an_unknown_network_is_refused():
+    with pytest.raises(ValueError, match="unknown network"):
+        GlobalNeural(levels=LEVELS, horizon=HORIZON, name="TFT")
+
+
+def test_both_networks_share_a_training_budget():
+    shared = ("input_size", "max_steps", "batch_size", "windows_batch_size", "scaler_type")
+    assert all(DEFAULTS["N-HiTS"][k] == DEFAULTS["PatchTST"][k] for k in shared)
+
+
+@pytest.mark.parametrize("name", ["N-HiTS", "PatchTST"])
+def test_the_same_fit_twice_gives_the_same_forecast(name):
+    first, second = _tiny(name), _tiny(name)
     first.fit(_panel())
     second.fit(_panel())
     np.testing.assert_array_equal(first.predict(_panel()), second.predict(_panel()))

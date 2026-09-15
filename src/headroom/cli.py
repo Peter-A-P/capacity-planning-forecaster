@@ -11,7 +11,7 @@ then the expensive model comparison.
     headroom stats               the statistical models (hours; resumable)
     headroom timings             measure cost per origin before committing to a run
     headroom boost               the global LightGBM model (hours; resumable)
-    headroom neural              N-HiTS, refitted on a schedule (hours; resumable)
+    headroom neural              N-HiTS or PatchTST, refitted on a schedule (hours; resumable)
     headroom reconcile           MinT on a model's medians: coherence and the change in CRPS
     headroom decide              staffing from each forecast, priced against an oracle
     headroom score               score finished checkpoints as skill against the baseline
@@ -462,8 +462,11 @@ def neural(
         int, typer.Option(help="Training window; 0 expands.")
     ] = TRAIN_WINDOW_DAYS,
     save_every: Annotated[int, typer.Option(help="Origins between checkpoint writes.")] = 13,
+    model_name: Annotated[
+        str, typer.Option("--model", help="The network: N-HiTS or PatchTST.")
+    ] = "N-HiTS",
 ) -> None:
-    """Back-test N-HiTS, refitting on a schedule and forecasting every origin, resumably.
+    """Back-test a neural model, refitting on a schedule and forecasting every origin.
 
     A fit is minutes on CPU and a forecast from fitted weights is a fraction of a second,
     so the model is refitted every ``refit_every`` origins and forecasts each origin in
@@ -476,11 +479,19 @@ def neural(
         step: Days between origins.
         window: Trailing training window in days, or 0 to let it expand.
         save_every: Origins between checkpoint writes.
+        model_name: The network, N-HiTS or PatchTST.
+
+    Raises:
+        typer.Exit: The network is not one this command builds.
     """
     import logging
 
     from headroom.backtest.store import open_checkpoint
-    from headroom.models.neural import NHiTS
+    from headroom.models.neural import DEFAULTS, GlobalNeural
+
+    if model_name not in DEFAULTS:
+        typer.echo(f"unknown network {model_name!r}; choose from {sorted(DEFAULTS)}")
+        raise typer.Exit(code=1)
 
     warnings.filterwarnings("ignore")
     for noisy in ("pytorch_lightning", "lightning.pytorch", "lightning_fabric"):
@@ -490,7 +501,7 @@ def neural(
     origins = Origins(
         days=panel.days, step=step, train_window=window or None, refit_every=refit_every
     )
-    model = NHiTS(levels=lv.SCORING, horizon=origins.horizon)
+    model = GlobalNeural(levels=lv.SCORING, horizon=origins.horizon, name=model_name)
     label = neural_label(model.name, refit_every)
     out = output_dir()
     out.mkdir(parents=True, exist_ok=True)

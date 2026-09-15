@@ -1,10 +1,14 @@
-"""N-HiTS, a global neural forecaster, through Nixtla NeuralForecast on CPU.
+"""N-HiTS and PatchTST, global neural forecasters, through Nixtla NeuralForecast on CPU.
 
-PLAN.md section 2.7: a named neural model, trained across all 37 series, with a
-multi-quantile loss, allowed to lose. It is compared paired against ETS, the best
+PLAN.md section 2.7: named neural models, trained across all 37 series, with a
+multi-quantile loss, allowed to lose. They are compared paired against ETS, the best
 statistical model, and against the global LightGBM model, which already showed that
 learning across series with a holiday calendar buys nothing over ETS on this panel
-(`docs/methods.md`). Whatever N-HiTS gains over LightGBM is what the architecture buys.
+(`docs/methods.md`). Whatever a neural model gains over LightGBM is what the architecture
+buys.
+
+Both run through :class:`GlobalNeural`, which differs between them only in the network
+it builds and its settings, so the two are fitted, forecast and refitted identically.
 
 ## What it sees
 
@@ -46,11 +50,10 @@ from headroom.score.levels import check_levels
 #: Days of history each forecast reads: sixteen weeks, eight times the horizon.
 INPUT_SIZE: Final[int] = 112
 
-#: The network and its training. NeuralForecast's N-HiTS defaults except where stated.
-SETTINGS: Final[dict[str, Any]] = {
+#: Training and trainer settings both networks share, so their budgets are the same.
+_SHARED: Final[dict[str, Any]] = {
     "input_size": INPUT_SIZE,
     "max_steps": 1000,
-    "learning_rate": 1e-3,
     "batch_size": 37,  # every series in every batch
     "windows_batch_size": 1024,
     "scaler_type": "robust",  # per-window scaling, so the city does not swamp the areas
@@ -62,23 +65,65 @@ SETTINGS: Final[dict[str, Any]] = {
     "enable_checkpointing": False,
 }
 
+#: N-HiTS: NeuralForecast's defaults except where :data:`_SHARED` says otherwise.
+SETTINGS: Final[dict[str, Any]] = {**_SHARED, "learning_rate": 1e-3}
+
+#: PatchTST: NeuralForecast's architecture defaults (three encoder layers, 16 heads,
+#: hidden size 128, patches of 16 days with a stride of 8, reversible instance
+#: normalisation), its default learning rate, and the same training budget as N-HiTS.
+PATCHTST_SETTINGS: Final[dict[str, Any]] = {**_SHARED, "learning_rate": 1e-4}
+
+#: The settings each network starts from.
+DEFAULTS: Final[dict[str, dict[str, Any]]] = {
+    "N-HiTS": SETTINGS,
+    "PatchTST": PATCHTST_SETTINGS,
+}
+
 
 @dataclass(slots=True)
-class NHiTS:
-    """N-HiTS with a multi-quantile loss, fitted once and forecasting many times.
+class GlobalNeural:
+    """A global neural model with a multi-quantile loss, fitted once, forecasting often.
 
     Attributes:
         levels: The quantile grid the loss is trained on and forecasts are returned on.
         horizon: Days forecast ahead.
-        name: The name used in the results tables.
-        settings: NeuralForecast settings; see :data:`SETTINGS`.
+        name: The network, ``"N-HiTS"`` or ``"PatchTST"``, also its name in the tables.
+        settings: NeuralForecast settings; the network's :data:`DEFAULTS` if omitted.
     """
 
     levels: npt.NDArray[np.float64]
     horizon: int
     name: str = "N-HiTS"
-    settings: dict[str, Any] = field(default_factory=lambda: dict(SETTINGS))
+    settings: dict[str, Any] | None = None
     _engine: Any = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Check the network is known and fill in its default settings.
+
+        Raises:
+            ValueError: The name is not a network this module builds.
+        """
+        if self.name not in DEFAULTS:
+            raise ValueError(f"unknown network {self.name!r}; choose from {sorted(DEFAULTS)}")
+        if self.settings is None:
+            self.settings = dict(DEFAULTS[self.name])
+
+    def _network(self) -> Any:  # noqa: ANN401 - NeuralForecast models are untyped
+        """Build the untrained network with the multi-quantile loss.
+
+        Returns:
+            A NeuralForecast model.
+        """
+        from neuralforecast.losses.pytorch import MQLoss
+        from neuralforecast.models import NHITS, PatchTST
+
+        network = {"N-HiTS": NHITS, "PatchTST": PatchTST}[self.name]
+        return network(
+            h=self.horizon,
+            loss=MQLoss(quantiles=[float(q) for q in self.levels]),
+            alias=self.name,
+            **(self.settings or {}),
+        )
 
     def fit(self, train: npt.NDArray[np.float64]) -> None:
         """Train on a window of history, replacing any earlier fit.
@@ -91,22 +136,15 @@ class NHiTS:
             ValueError: The window is too short to hold one training example.
         """
         from neuralforecast import NeuralForecast
-        from neuralforecast.losses.pytorch import MQLoss
-        from neuralforecast.models import NHITS
 
         check_levels(self.levels)
-        if train.ndim != 2 or train.shape[1] < self.settings["input_size"] + self.horizon:
+        input_size = int((self.settings or {})["input_size"])
+        if train.ndim != 2 or train.shape[1] < input_size + self.horizon:
             raise ValueError(
-                f"train {train.shape} is too short for input {self.settings['input_size']} "
+                f"train {train.shape} is too short for input {input_size} "
                 f"and horizon {self.horizon}"
             )
-        model = NHITS(
-            h=self.horizon,
-            loss=MQLoss(quantiles=[float(q) for q in self.levels]),
-            alias=self.name,
-            **self.settings,
-        )
-        engine = NeuralForecast(models=[model], freq="D")
+        engine = NeuralForecast(models=[self._network()], freq="D")
         engine.fit(df=_long_frame(train), val_size=0)
         self._engine = engine
 
@@ -161,6 +199,6 @@ class NHiTS:
             ValueError: ``horizon`` or ``levels`` differ from the model's own.
         """
         if horizon != self.horizon or not np.array_equal(levels, self.levels):
-            raise ValueError("an N-HiTS model is built for one horizon and one quantile grid")
+            raise ValueError("a neural model is built for one horizon and one quantile grid")
         self.fit(train)
         return self.predict(train)

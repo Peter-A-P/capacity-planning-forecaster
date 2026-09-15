@@ -14,13 +14,13 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**234 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**238 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
 |---|---:|---|
 | `test_backtest.py` | 39 | Origins and look-ahead, refit schedule, seasonal naive, the runner, checkpointing |
-| `test_neural.py` | 6 | N-HiTS quantiles, forecasting between refits, determinism; skipped without the neural extra |
+| `test_neural.py` | 10 | N-HiTS and PatchTST quantiles, forecasting between refits, determinism; skipped without the neural extra |
 | `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
 | `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
 | `test_reconcile.py` | 9 | MinT coherence for any input, equality with hierarchicalforecast, feedback rule |
@@ -54,9 +54,12 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   +1.98; coverage at 90 percent 0.58 to 0.68; about 18.3 hours of fitting. Not the refit
   schedule (no trend with weeks since refit), and not calibration alone (a conformal
   median is still behind ETS). **Owed:** a second-seed refit of a sample of origins.
-  **PatchTST** not built. Needs
-  `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. Its tests skip where
-  NeuralForecast is not installed, which includes CI. **PatchTST** not built.
+- **PatchTST: built, not run.** `headroom neural --model PatchTST`, through the same
+  `GlobalNeural` wrapper as N-HiTS: NeuralForecast's architecture defaults and learning
+  rate, the same 112-day input and the same 1,000-step training budget. Next: time one
+  full fit on an idle machine, then choose its refit schedule. Needs
+  `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The neural tests skip
+  where NeuralForecast is not installed, which includes CI.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
   First check it installs under Python 3.13. Its pretraining postdates most origins, so
   it is scored separately on a clean window after its pretraining ends; read 2.7a before
