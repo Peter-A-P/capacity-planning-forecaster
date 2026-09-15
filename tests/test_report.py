@@ -113,7 +113,8 @@ def test_worst_window_ignores_positions_before_the_window_is_full():
     # A short-window average at the start would report 0.0 at position 0.
     coverage = np.array([0.0, 1.0, 1.0, 1.0, 1.0])
     at, value = worst_window(coverage, window=3)
-    assert (at, value) == (2, pytest.approx(2 / 3))
+    assert at == 2
+    assert value == pytest.approx(2 / 3)
 
 
 def test_worst_window_refuses_a_window_longer_than_the_series():
