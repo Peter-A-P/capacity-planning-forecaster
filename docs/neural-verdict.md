@@ -43,14 +43,23 @@ percent and the 468.7 at 90, roughly ETS's 87th percentile. Its cheapest level, 
 
 ## What this verdict does not claim
 
-* **Not that neural forecasting cannot work here.** One architecture, one seed, fixed
+* **Not that neural forecasting cannot work here.** One architecture, a full run on one seed, fixed
   settings that were deliberately not tuned on the backtest, a 112-day input window and CPU
   training. A tuned N-HiTS, or one given calendar features, might do better; tuning it on
   these origins would have made any win untrustworthy.
-* **Not a measured seed sensitivity.** One fit at one origin scored a city CRPS of 103 on a
-  GPU against 159 on the CPU. The gap above is consistent across every origin, refit
-  position and level, which makes a reversal unlikely, but a second-seed refit of a sample
-  of origins is still owed.
+* **Not that the seed decided it.** Measured 2026-09-15: 20 refits with a second seed,
+  spread from 2009 to 2026, each forecasting the 4 origins it serves. A single fit moves a
+  lot (the city CRPS of one refit changed by 10.5 at the median and 56 at most), but the
+  second seed is no better on average, and it loses to ETS just the same:
+
+  | Level | Seed 1 minus seed 0 | Seed 1 minus ETS | Refits where seed 1 is behind ETS |
+  |---|---|---|---|
+  | City | -6.44 [-15.35, +2.38] | +23.85 [+13.76, +33.74] | 18 of 20 |
+  | Borough | -0.41 [-1.35, +0.63] | +6.02 [+4.55, +7.46] | 19 of 20 |
+  | Dispatch area | -0.03 [-0.15, +0.08] | +1.83 [+1.73, +1.94] | 20 of 20 |
+
+  Intervals are an ordinary bootstrap over the 20 refits, which are about eleven months
+  apart. Seed 1's 90 percent coverage is 0.61 to 0.69, as poor as seed 0's.
 * **Not the whole neural question.** PatchTST and TimesFM are not built. TimesFM, used
   zero-shot, is a different kind of claim and is reported only on its clean window.
 

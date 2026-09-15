@@ -636,13 +636,33 @@ machine slept through it, and the fits while another session shared the machine 
 about 310; both are why the median, not the total, is the reported figure. The run's wall
 clock, 22.5 hours, includes a three-hour sleep.
 
-### What is still not settled
+### A second seed, measured 2026-09-15
 
-A single seed and fixed, untuned settings. The GPU test above showed one fit at one origin
-scoring a city CRPS of 103 on the GPU against 159 on the CPU, so the sensitivity of this
-result to the luck of a fit is real and unmeasured. The gap is consistent across 911
-origins, every refit position and all three levels, which makes a reversal unlikely, but a
-second-seed refit of a sample of origins is what would put a number on it.
+The GPU test below showed one fit at one origin scoring a city CRPS of 103 on the GPU
+against 159 on the CPU, so the luck of a fit had to be measured. Twenty refit origins,
+evenly spaced from 56 to 960 (2009-01-26 to 2026-05-25), were refitted with
+`random_seed` 1 instead of 0, and each fit forecast the 4 origins it serves, exactly as in
+the monthly run: 80 origins in all. Scored against seed 0 and ETS on those same origins
+(means over the 20 refits; intervals an ordinary bootstrap over refits, which are about
+eleven months apart and treated as independent):
+
+| Level | Seed 0 | Seed 1 | ETS | Seed 1 minus seed 0 | Seed 1 minus ETS | Seed 1 behind ETS |
+|---|---:|---:|---:|---|---|---:|
+| City | 153.80 | 147.36 | 123.51 | -6.44 [-15.35, +2.38] | +23.85 [+13.76, +33.74] | 18 of 20 |
+| Borough | 36.55 | 36.14 | 30.12 | -0.41 [-1.35, +0.63] | +6.02 [+4.55, +7.46] | 19 of 20 |
+| Dispatch area | 9.91 | 9.88 | 8.05 | -0.03 [-0.15, +0.08] | +1.83 [+1.73, +1.94] | 20 of 20 |
+
+**One fit is noisy; the verdict is not.** At the city a single refit's CRPS moved by 10.5
+at the median and by 56 at most between seeds, the same size of effect the GPU test
+found, and it shrinks by level (1.2 at the boroughs, 0.19 at the areas). On average the
+second seed is no different from the first, and it is behind ETS by about as much as
+the full run, at every level. Its 90 percent coverage is 0.61 at the city, 0.66 at the
+boroughs and 0.69 at the areas, as poor as seed 0's. The refits took 311 seconds at the
+median against the monthly run's 274; other work shared the machine for the first part
+of this run, so it is not a timing. The check was a one-off script outside the package,
+and the table is its whole output.
+
+The settings stay fixed and untuned; that part is unchanged.
 
 ### What it is given
 
@@ -709,10 +729,9 @@ identical to the last digit), yet the GPU's forecast at that origin scored a cit
 103.1 against the CPU's 159.5, while the dispatch areas barely moved. One fit of this
 network, from the same data and seed, lands in a noticeably different place depending on
 the arithmetic path (device, and PyTorch 2.11 against 2.14). A single origin's N-HiTS
-number therefore says little; only the average over hundreds of origins can be read, and
-how much of N-HiTS's result is the luck of a fit should be measured by refitting a sample
-of origins with a second seed. The statistical models do not have this sensitivity to
-anything like the same degree.
+number therefore says little; only the average over hundreds of origins can be read. The
+second-seed refit above measured it: single fits move by this much, averages do not. The
+statistical models do not have this sensitivity to anything like the same degree.
 
 The test ran on the GPU while the CPU backtest was fitting, from about 08:30 to 08:45, so
 the fit times the backtest recorded in that window are inflated and are excluded from its

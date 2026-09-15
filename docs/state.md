@@ -53,7 +53,9 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
   +1.98; coverage at 90 percent 0.58 to 0.68; about 18.3 hours of fitting. Not the refit
   schedule (no trend with weeks since refit), and not calibration alone (a conformal
-  median is still behind ETS). **Owed:** a second-seed refit of a sample of origins.
+  median is still behind ETS). Not the seed either: 20 refits with a second seed are no
+  better on average (city -6.44 [-15.35, +2.38]) and still behind ETS at every level
+  (city +23.85 [+13.76, +33.74]), though one fit's city CRPS can move by 56.
 - **PatchTST: built, not run.** `headroom neural --model PatchTST`, through the same
   `GlobalNeural` wrapper as N-HiTS: NeuralForecast's architecture defaults and learning
   rate, the same 112-day input and the same 1,000-step training budget. Next: time one
