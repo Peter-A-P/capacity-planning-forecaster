@@ -328,6 +328,17 @@ dashboard/     static site (HTML, a small chart library, precomputed JSON): fan 
 docs/          data.md, methods.md (assumptions, incl. conformal under dependence), neural-verdict.md, decision.md
 ```
 
+**As built, report (2026-09-15).** `report/tables.py` and `headroom report` exist; charts
+and export do not yet. The README's second placeholder table ("Reconciliation and the
+rota") mixed per-level, per-service-level and per-method numbers in one row, which no
+single row can hold, so the command writes it as two tables: CRPS before and after MinT
+per level, with the coherence breach stated above it, and staffing per service level and
+method with realised cost against the oracle. The first table keeps its columns; its worst
+window is the minimum over the whole period, which falls in spring 2020 for every method,
+and is dated rather than given an interval, since a bootstrap over a single worst stretch
+means nothing. Fit time is the median model time per origin times the schedule, so time lost to a
+busy or sleeping machine is not charged to a model.
+
 ### Tests that matter
 
 The summing matrix reproduces every aggregate from its leaves; reconciled forecasts are

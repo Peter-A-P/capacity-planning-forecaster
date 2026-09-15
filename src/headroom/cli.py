@@ -15,6 +15,7 @@ then the expensive model comparison.
     headroom reconcile           MinT on a model's medians: coherence and the change in CRPS
     headroom decide              staffing from each forecast, priced against an oracle
     headroom score               score finished checkpoints as skill against the baseline
+    headroom report              fill the README's results tables (the only thing that may)
 
 Backtest output goes to `backtest/out` unless `HEADROOM_OUT` names another directory. A
 full weekly checkpoint is about 740 MB per model, which is worth keeping out of a synced
@@ -24,6 +25,7 @@ folder.
 import os
 import time
 import warnings
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -33,8 +35,9 @@ import numpy.typing as npt
 import polars as pl
 import typer
 
-from headroom.backtest.origins import TRAIN_WINDOW_DAYS, Origins
+from headroom.backtest.origins import TRAIN_WINDOW_DAYS, Origin, Origins
 from headroom.backtest.run import Scores, run
+from headroom.backtest.store import Checkpoint
 from headroom.conformal.aci import AdaptiveConformal
 from headroom.conformal.agaci import AggregatedConformal
 from headroom.conformal.apply import apply
@@ -47,6 +50,7 @@ from headroom.data.nyc_ems import (
 )
 from headroom.hierarchy.build import Panel, build
 from headroom.models.baselines import SeasonalNaive
+from headroom.reconcile.mint import ReconciledMedians
 from headroom.score import levels as lv
 from headroom.score.bootstrap import confidence_interval, skill_interval
 from headroom.score.coverage import empirical_coverage
@@ -671,105 +675,251 @@ def decide(
     Raises:
         typer.Exit: A checkpoint is missing or incomplete.
     """
-    from headroom.backtest.store import open_checkpoint
-    from headroom.conformal.predictive import first_valid_origin, predictive_quantiles
-    from headroom.decide.newsvendor import (
-        critical_ratio,
-        demand_at,
-        load_inputs,
-        realised_cost,
-        units_for,
-    )
-    from headroom.reconcile.mint import reconcile_backtest, shift_quantiles
+    from headroom.conformal.predictive import first_valid_origin
+    from headroom.decide.newsvendor import critical_ratio, load_inputs
 
     inputs = load_inputs()
     implied = critical_ratio(inputs.cost_over, inputs.cost_under)
-    service = sorted({round(implied, 9), *inputs.service_levels})
+    service = _service_levels(implied, inputs.service_levels)
     wanted = [name.strip() for name in models.split(",") if name.strip()]
     to_reconcile = {name.strip() for name in reconciled.split(",") if name.strip()}
 
     panel, origins = _schedule(step, window)
     start = first_valid_origin(origins.horizon, step)
     listed = list(origins)
-    areas = panel.hierarchy.rows_at("area")
     actual = np.stack([panel.values[:, origin.target] for origin in origins])
-    area_actual = actual[start:, areas, :]
     typer.echo(
-        f"{len(areas)} dispatch areas, origins {start} to {len(origins) - 1} "
-        f"({listed[start].day} to {listed[-1].day})\n"
+        f"{len(panel.hierarchy.rows_at('area'))} dispatch areas, origins {start} to "
+        f"{len(origins) - 1} ({listed[start].day} to {listed[-1].day})\n"
         f"inputs (illustrative): {inputs.demand_per_unit:g} incidents per unit, "
         f"cost {inputs.cost_over:g} per spare unit-day and {inputs.cost_under:g} per missing "
         f"one, so the costs imply staffing at the {implied:.0%} quantile"
     )
 
-    def reduce(quantiles: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-        area_q = quantiles[start:, areas, :, :]
-        return np.stack([demand_at(area_q, lv.SCORING, level) for level in service], axis=-1)
-
-    demand: dict[str, npt.NDArray[np.float64]] = {}
-    naive = SeasonalNaive()
-    service_grid = np.array(service)
-    demand["Seasonal naive"] = np.stack(
-        [
-            naive.forecast(panel.values[:, origin.train], origins.horizon, service_grid)[areas]
-            for origin in listed[start:]
-        ]
-    )
+    demand = {"Seasonal naive": _naive_demand(panel, origins, start, service)}
     for name in wanted:
-        levels = POINT_LEVELS if name in POINT_MODELS else lv.SCORING
-        path = output_dir() / _checkpoint_name(name, step, origins)
-        if not path.exists():
-            typer.echo(f"no checkpoint at {path}")
-            raise typer.Exit(code=1)
-        checkpoint = open_checkpoint(path, name, origins, panel.hierarchy.n_nodes, levels)
-        if not checkpoint.complete:
-            typer.echo(f"{name}: {checkpoint.n_done} of {len(origins)} origins done")
-            raise typer.Exit(code=1)
-        if name in POINT_MODELS:
-            quantiles = predictive_quantiles(
-                checkpoint.quantiles[..., 0], actual, lv.SCORING, step
-            ).quantiles
-            demand[name] = reduce(quantiles)
-        else:
-            demand[name] = reduce(checkpoint.quantiles)
-            if name in to_reconcile:
-                median_at = int(np.abs(lv.SCORING - 0.5).argmin())
-                base_median = checkpoint.quantiles[..., median_at]
-                mint = reconcile_backtest(base_median, actual, panel.hierarchy, step)
-                shifted = np.full_like(checkpoint.quantiles, np.nan)
-                shifted[start:] = shift_quantiles(
-                    checkpoint.quantiles[start:], base_median[start:], mint.medians[start:]
-                )
-                demand[f"{name} + MinT"] = reduce(shifted)
-                del shifted
-        del checkpoint
+        checkpoint = _complete_checkpoint(name, step, origins, panel.hierarchy.n_nodes)
+        quantiles = _distribution(name, checkpoint.quantiles, actual, step)
+        demand[name] = _area_demand(quantiles, panel, start, service)
+        if name in to_reconcile and name not in POINT_MODELS:
+            shifted, _ = _mint_quantiles(quantiles, actual, panel, step)
+            demand[f"{name} + MinT"] = _area_demand(shifted, panel, start, service)
+            del shifted
+        del checkpoint, quantiles
 
     reference = wanted[0] if wanted else "Seasonal naive"
-    costs: dict[str, list[npt.NDArray[np.float64]]] = {}
-    for name, forecast in demand.items():
-        costs[name] = []
-        for j, _ in enumerate(service):
-            staffed = units_for(forecast[..., j], inputs.demand_per_unit)
-            daily = realised_cost(staffed, area_actual, inputs).sum(axis=1).mean(axis=1)
-            costs[name].append(daily)
-
-    oracle_units = units_for(area_actual, inputs.demand_per_unit).sum(axis=1).mean()
-    typer.echo(f"oracle: {oracle_units:.1f} units a day across the areas, cost 0")
+    staffing = _staffing(demand, actual[start:], panel, service)
+    typer.echo(f"oracle: {staffing.oracle_units:.1f} units a day across the areas, cost 0")
     for j, level in enumerate(service):
         mark = " (implied by the costs)" if abs(level - implied) < 1e-9 else ""
         typer.echo(f"service level {level:.0%}{mark}")
-        for name, forecast in demand.items():
-            daily = costs[name][j]
+        for name in demand:
+            daily = staffing.costs[name][j]
             cost, low, high = confidence_interval(daily)
-            units = units_for(forecast[..., j], inputs.demand_per_unit).sum(axis=1).mean()
             line = (
                 f"  {name:16} cost/day {cost:7.2f} [{low:7.2f}, {high:7.2f}]  "
-                f"units/day {units:6.1f}"
+                f"units/day {staffing.units[name][j].mean():6.1f}"
             )
-            if name != reference and reference in costs:
-                d, d_low, d_high = confidence_interval(daily - costs[reference][j])
+            if name != reference and reference in staffing.costs:
+                d, d_low, d_high = confidence_interval(daily - staffing.costs[reference][j])
                 line += f"  minus {reference} {d:+6.2f} [{d_low:+6.2f}, {d_high:+6.2f}]"
             typer.echo(line)
+
+
+def _service_levels(implied: float, fixed: tuple[float, ...]) -> list[float]:
+    """Return the service levels staffed at: the one the costs imply, then the fixed ones.
+
+    Args:
+        implied: The critical ratio the costs imply.
+        fixed: The levels in the decision table.
+
+    Returns:
+        The distinct levels, ascending.
+    """
+    return sorted({round(implied, 9), *fixed})
+
+
+def _complete_checkpoint(name: str, step: int, origins: Origins, n_nodes: int) -> Checkpoint:
+    """Open a model's finished checkpoint, or explain why it cannot be used.
+
+    Args:
+        name: The model's checkpoint name.
+        step: Days between origins it was built with.
+        origins: The schedule it was built with.
+        n_nodes: Nodes in the hierarchy.
+
+    Returns:
+        The checkpoint, every origin done.
+
+    Raises:
+        typer.Exit: The checkpoint is missing or incomplete.
+    """
+    from headroom.backtest.store import open_checkpoint
+
+    path = output_dir() / _checkpoint_name(name, step, origins)
+    if not path.exists():
+        typer.echo(f"no checkpoint at {path}; run the model first, or set {OUT_VARIABLE}")
+        raise typer.Exit(code=1)
+    levels = POINT_LEVELS if name in POINT_MODELS else lv.SCORING
+    checkpoint = open_checkpoint(path, name, origins, n_nodes, levels)
+    if not checkpoint.complete:
+        typer.echo(f"{name}: {checkpoint.n_done} of {len(origins)} origins done")
+        raise typer.Exit(code=1)
+    return checkpoint
+
+
+def _distribution(
+    name: str,
+    quantiles: npt.NDArray[np.float64],
+    actual: npt.NDArray[np.float64],
+    step: int,
+) -> npt.NDArray[np.float64]:
+    """Return a model's forecast distribution on the scoring grid over every origin.
+
+    A median-only model is given the conformal predictive distribution from its own past
+    errors, which is ``nan`` before the first origin with a full calibration window.
+
+    Args:
+        name: The model's name.
+        quantiles: Its checkpoint's forecasts.
+        actual: What happened, shape ``(n_origins, n_nodes, horizon)``.
+        step: Days between origins.
+
+    Returns:
+        Quantiles, shape ``(n_origins, n_nodes, horizon, n_scoring)``.
+    """
+    from headroom.conformal.predictive import predictive_quantiles
+
+    if name not in POINT_MODELS:
+        return quantiles
+    return predictive_quantiles(quantiles[..., 0], actual, lv.SCORING, step).quantiles
+
+
+def _mint_quantiles(
+    quantiles: npt.NDArray[np.float64],
+    actual: npt.NDArray[np.float64],
+    panel: Panel,
+    step: int,
+) -> tuple[npt.NDArray[np.float64], ReconciledMedians]:
+    """Reconcile a model's medians with MinT and move each node's quantiles with them.
+
+    Args:
+        quantiles: The model's forecasts over every origin.
+        actual: What happened.
+        panel: The panel, for its hierarchy.
+        step: Days between origins.
+
+    Returns:
+        The shifted quantiles, ``nan`` before the first reconciled origin, and the
+        reconciliation itself.
+    """
+    from headroom.reconcile.mint import reconcile_backtest, shift_quantiles
+
+    median_at = int(np.abs(lv.SCORING - 0.5).argmin())
+    base_median = quantiles[..., median_at]
+    mint = reconcile_backtest(base_median, actual, panel.hierarchy, step)
+    start = mint.first_valid
+    shifted = np.full_like(quantiles, np.nan)
+    shifted[start:] = shift_quantiles(
+        quantiles[start:], base_median[start:], mint.medians[start:]
+    )
+    return shifted, mint
+
+
+def _area_demand(
+    quantiles: npt.NDArray[np.float64], panel: Panel, start: int, service: list[float]
+) -> npt.NDArray[np.float64]:
+    """Read each dispatch area's demand at each service level, from ``start`` onward.
+
+    Args:
+        quantiles: Forecasts on the scoring grid over every origin.
+        panel: The panel, for its hierarchy.
+        start: First origin staffed.
+        service: Service levels.
+
+    Returns:
+        Demand, shape ``(n_origins - start, n_areas, horizon, n_service)``.
+    """
+    from headroom.decide.newsvendor import demand_at
+
+    area_q = quantiles[start:, panel.hierarchy.rows_at("area"), :, :]
+    return np.stack([demand_at(area_q, lv.SCORING, level) for level in service], axis=-1)
+
+
+def _naive_demand(
+    panel: Panel, origins: Origins, start: int, service: list[float]
+) -> npt.NDArray[np.float64]:
+    """Seasonal naive's area demand at each service level, from ``start`` onward.
+
+    Args:
+        panel: The panel.
+        origins: The schedule.
+        start: First origin staffed.
+        service: Service levels.
+
+    Returns:
+        Demand, shaped as :func:`_area_demand` returns it.
+    """
+    areas = panel.hierarchy.rows_at("area")
+    grid = np.array(service)
+    naive = SeasonalNaive()
+    return np.stack(
+        [
+            naive.forecast(panel.values[:, origin.train], origins.horizon, grid)[areas]
+            for origin in list(origins)[start:]
+        ]
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Staffing:
+    """Realised staffing per method and service level.
+
+    Attributes:
+        costs: Per method, one array per service level of cost per day summed over the
+            areas, one value per origin.
+        units: Per method, the same shape, of units staffed per day summed over the areas.
+        oracle_units: Units a day the oracle staffs, knowing demand, averaged over origins.
+    """
+
+    costs: dict[str, list[npt.NDArray[np.float64]]]
+    units: dict[str, list[npt.NDArray[np.float64]]]
+    oracle_units: float
+
+
+def _staffing(
+    demand: dict[str, npt.NDArray[np.float64]],
+    actual: npt.NDArray[np.float64],
+    panel: Panel,
+    service: list[float],
+) -> Staffing:
+    """Staff from each method's demand and price it against what happened.
+
+    Args:
+        demand: Per method, area demand as :func:`_area_demand` returns it.
+        actual: What happened over the same origins, every node.
+        panel: The panel, for its hierarchy.
+        service: Service levels, matching the last axis of each demand array.
+
+    Returns:
+        Costs and units per method and service level.
+    """
+    from headroom.decide.newsvendor import load_inputs, realised_cost, units_for
+
+    inputs = load_inputs()
+    area_actual = actual[:, panel.hierarchy.rows_at("area"), :]
+    costs: dict[str, list[npt.NDArray[np.float64]]] = {}
+    units: dict[str, list[npt.NDArray[np.float64]]] = {}
+    for name, forecast in demand.items():
+        costs[name], units[name] = [], []
+        for j, _ in enumerate(service):
+            staffed = units_for(forecast[..., j], inputs.demand_per_unit)
+            costs[name].append(
+                realised_cost(staffed, area_actual, inputs).sum(axis=1).mean(axis=1)
+            )
+            units[name].append(staffed.sum(axis=1).mean(axis=1))
+    oracle = float(units_for(area_actual, inputs.demand_per_unit).sum(axis=1).mean())
+    return Staffing(costs=costs, units=units, oracle_units=oracle)
 
 
 @app.command()
@@ -874,6 +1024,400 @@ def score(
     for scores in everything.values():
         paired = reference if reference is not None and reference is not scores else None
         _print_scores(scores, baseline_scores, paired)
+
+
+#: The file `headroom report` writes its tables into.
+README = Path("README.md")
+
+#: Hierarchy levels in table order, with the names the tables use.
+LEVEL_NAMES = {"city": "City", "borough": "Borough", "area": "Dispatch area"}
+
+#: Days in the rolling window the worst-coverage column is measured over.
+SHIFT_WINDOW_DAYS = 91
+
+
+@app.command()
+def report(
+    statistical: Annotated[
+        str, typer.Option(help="Statistical models; the best by mean CRPS skill is shown.")
+    ] = "ETS,Theta,MSTL",
+    boosting: Annotated[
+        str, typer.Option(help="The gradient-boosting checkpoint.")
+    ] = "LightGBM",
+    neural: Annotated[
+        str, typer.Option(help="Comma-separated neural checkpoints.")
+    ] = "N-HiTS-refit4",
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+    write: Annotated[
+        bool, typer.Option(help="Write the tables into README.md as well as printing them.")
+    ] = True,
+) -> None:
+    """Fill the README's results tables from the finished checkpoints.
+
+    The only thing allowed to write those tables. Every model is scored on the same
+    origins, from the first one where LightGBM's conformal distribution and the MinT
+    covariance both exist, so every comparison in the tables is paired. Takes several
+    minutes and a few gigabytes of memory, one checkpoint at a time.
+
+    Args:
+        statistical: Statistical models to choose the best from, by CRPS skill averaged
+            over the three levels. The best is also reconciled and staffed from.
+        boosting: The gradient-boosting model's checkpoint name.
+        neural: Neural checkpoint names, such as ``N-HiTS-refit4``.
+        step: Days between origins the checkpoints were built with.
+        window: Trailing training window they were built with, or 0 for expanding.
+        write: Write the tables into README.md between its report markers.
+
+    Raises:
+        typer.Exit: A checkpoint is missing or incomplete, or the README has no markers.
+    """
+    from headroom.backtest.run import score_forecasts
+    from headroom.conformal.predictive import first_valid_origin
+    from headroom.decide.newsvendor import critical_ratio, load_inputs
+    from headroom.report import tables
+
+    panel, origins = _schedule(step, window)
+    hierarchy = panel.hierarchy
+    start = first_valid_origin(origins.horizon, step)
+    listed = list(origins)
+    actual = np.stack([panel.values[:, origin.target] for origin in origins])
+    inputs = load_inputs()
+    implied = critical_ratio(inputs.cost_over, inputs.cost_under)
+    service = _service_levels(implied, inputs.service_levels)
+
+    def scored(name: str, quantiles: npt.NDArray[np.float64]) -> Scores:
+        typer.echo(f"scoring {name}")
+        return score_forecasts(
+            name, hierarchy, origins, quantiles[start:], actual[start:], lv.SCORING, 0.0
+        )
+
+    def compute(checkpoint: Checkpoint) -> float:
+        # The median, not the total: an origin slowed by other work or by the machine
+        # sleeping through a fit should not count as the model's cost.
+        return float(np.median(checkpoint.seconds)) * len(origins)
+
+    typer.echo("running seasonal naive")
+    naive_full = run(SeasonalNaive(), "Seasonal naive", panel.values, hierarchy, origins)
+    naive = _from_origin(naive_full, start)
+
+    def mean_skill(scores: Scores) -> float:
+        return float(
+            np.mean(
+                [
+                    1.0
+                    - scores.by_origin(scores.crps, level).mean()
+                    / naive.by_origin(naive.crps, level).mean()
+                    for level in LEVEL_NAMES
+                ]
+            )
+        )
+
+    candidates: dict[str, Scores] = {}
+    seconds: dict[str, float] = {"Seasonal naive": naive_full.fit_seconds}
+    for name in _names(statistical):
+        checkpoint = _complete_checkpoint(name, step, origins, hierarchy.n_nodes)
+        candidates[name] = scored(name, checkpoint.quantiles)
+        seconds[name] = compute(checkpoint)
+        del checkpoint
+    if not candidates:
+        typer.echo("name at least one statistical model")
+        raise typer.Exit(code=1)
+    best = max(candidates, key=lambda name: mean_skill(candidates[name]))
+    skills = ", ".join(f"{name} {mean_skill(s):+.4f}" for name, s in candidates.items())
+    typer.echo(f"best statistical model: {best} (mean CRPS skill {skills})")
+
+    demand = {"Seasonal naive": _naive_demand(panel, origins, start, service)}
+    checkpoint = _complete_checkpoint(best, step, origins, hierarchy.n_nodes)
+    demand[best] = _area_demand(checkpoint.quantiles, panel, start, service)
+    typer.echo(f"reconciling {best}")
+    shifted, mint = _mint_quantiles(checkpoint.quantiles, actual, panel, step)
+    if mint.first_valid > start:
+        typer.echo(f"MinT starts at origin {mint.first_valid}, after {start}")
+        raise typer.Exit(code=1)
+    median_at = int(np.abs(lv.SCORING - 0.5).argmin())
+    base_breach = max(
+        hierarchy.coherence_error(checkpoint.quantiles[o, :, h, median_at])
+        for o in range(start, len(origins))
+        for h in range(origins.horizon)
+    )
+    del checkpoint
+    reconciled = scored(f"{best} + MinT", shifted)
+    demand[f"{best} + MinT"] = _area_demand(shifted, panel, start, service)
+    del shifted
+
+    others: dict[str, Scores] = {}
+    for name in [*_names(boosting), *_names(neural)]:
+        checkpoint = _complete_checkpoint(name, step, origins, hierarchy.n_nodes)
+        quantiles = _distribution(name, checkpoint.quantiles, actual, step)
+        others[name] = scored(name, quantiles)
+        seconds[name] = compute(checkpoint)
+        demand[name] = _area_demand(quantiles, panel, start, service)
+        del checkpoint, quantiles
+
+    typer.echo("staffing")
+    staffing = _staffing(demand, actual[start:], panel, service)
+    window_origins = max(3, SHIFT_WINDOW_DAYS // step)
+
+    methods: list[tuple[str, Scores | None, float]] = [
+        ("Seasonal naive", naive, seconds["Seasonal naive"]),
+        (f"Best statistical: {best}", candidates[best], seconds[best]),
+    ]
+    methods += [(_method_label(name), others[name], seconds[name]) for name in others]
+    methods += [("PatchTST", None, 0.0), ("TimesFM, zero-shot (clean window only)", None, 0.0)]
+
+    skill_rows: list[list[str]] = []
+    for label, scores, cost in methods:
+        if scores is None:
+            skill_rows.append([label, "not built", "", "", "", "", "", ""])
+            continue
+        skill_rows += _skill_rows(label, scores, naive, cost, window_origins, listed, start)
+
+    reconcile_rows = []
+    for level, level_name in LEVEL_NAMES.items():
+        before = candidates[best].by_origin(candidates[best].crps, level)
+        after = reconciled.by_origin(reconciled.crps, level)
+        reconcile_rows.append(
+            [
+                level_name,
+                tables.number(tables.Estimate.of(confidence_interval(before))),
+                tables.number(tables.Estimate.of(confidence_interval(after))),
+                tables.number(
+                    tables.Estimate.of(confidence_interval(after - before)),
+                    places=min(3, tables.decimals_for(float(before.mean())) + 1),
+                    signed=True,
+                ),
+                tables.number(
+                    tables.Estimate.of(skill_interval(after, before)), places=3, signed=True
+                ),
+            ]
+        )
+
+    staffing_rows = []
+    for j, service_level in enumerate(service):
+        mark = ", implied by the costs" if abs(service_level - implied) < 1e-9 else ""
+        for i, name in enumerate(demand):
+            daily = staffing.costs[name][j]
+            difference = (
+                "reference"
+                if name == best
+                else tables.number(
+                    tables.Estimate.of(confidence_interval(daily - staffing.costs[best][j])),
+                    places=2,
+                    signed=True,
+                )
+            )
+            staffing_rows.append(
+                [
+                    f"{service_level:.0%}{mark}" if i == 0 else "",
+                    _method_label(name),
+                    tables.number(
+                        tables.Estimate.of(confidence_interval(staffing.units[name][j])),
+                        places=1,
+                    ),
+                    tables.number(tables.Estimate.of(confidence_interval(daily)), places=2),
+                    difference,
+                ]
+            )
+
+    first, last = listed[start].day, listed[-1].day
+    block = "\n".join(
+        [
+            f"All numbers from `headroom report`: {len(origins) - start} weekly forecast "
+            f"origins, {first} to {last}, each forecasting the next {origins.horizon} days "
+            f"for {hierarchy.n_nodes} series (the city, {len(hierarchy.rows_at('borough'))} "
+            f"boroughs and {len(hierarchy.rows_at('area'))} dispatch areas). Every model is "
+            "scored on the same origins, and every interval is a 95 percent moving-block "
+            "bootstrap interval over them, paired wherever two methods are compared.",
+            "",
+            "**Skill against seasonal naive, per hierarchy level**",
+            "",
+            tables.markdown_table(
+                [
+                    "Method",
+                    "Level",
+                    "CRPS skill",
+                    "Pinball skill (median)",
+                    "Coverage at 90% nominal, whole period",
+                    f"Coverage at 90%, worst {SHIFT_WINDOW_DAYS}-day window (last origin)",
+                    "Mean width at 90%",
+                    "Fit time, full schedule",
+                ],
+                skill_rows,
+            ),
+            "",
+            "Skill is one minus the method's mean score over seasonal naive's, so higher is "
+            "better and zero is no better than the baseline.",
+            "",
+            "**Coverage, and what it does and does not promise.** Seasonal naive (quantiles "
+            "of its own past errors), the statistical models and N-HiTS are scored on their "
+            "own quantiles with no conformal step, so no coverage is guaranteed for them. "
+            "LightGBM forecasts a median only, and its distribution "
+            "is conformal, built from its own errors over the previous 52 origins. Conformal "
+            "coverage holds on average over time and only if errors are exchangeable, which "
+            "demand through a shift is not, so it is not promised in any one window. The "
+            f"worst window is the lowest coverage in a trailing {SHIFT_WINDOW_DAYS}-day "
+            f"window ({window_origins} weekly origins), dated by the last origin in it. It is "
+            "the single worst stretch of one history, so it carries no bootstrap interval.",
+            "",
+            "**Fit time** is the median model time per origin times the "
+            f"{len(origins)} origins of the full schedule, on one desktop CPU (machine B in "
+            "[docs/methods.md](docs/methods.md)); the median, so that time lost to other "
+            "work or to the machine sleeping is not counted. The statistical models were "
+            "fitted three at a time and each is given a third. LightGBM is the only model "
+            "given the holiday calendar. N-HiTS is refitted every fourth origin and "
+            "forecasts every origin from its latest weights. PatchTST and TimesFM are not "
+            "built yet.",
+            "",
+            f"**Reconciliation: {best} with MinT**",
+            "",
+            f"Largest coherence breach over every origin and horizon step, in incidents: "
+            f"{base_breach:.1f} before reconciling, {mint.coherence_error:.1e} after.",
+            "",
+            tables.markdown_table(
+                [
+                    "Level",
+                    f"CRPS, {best}",
+                    f"CRPS, {best} + MinT",
+                    "Change from reconciling",
+                    "Skill of reconciling",
+                ],
+                reconcile_rows,
+            ),
+            "",
+            "Only the medians are reconciled; each node's quantiles move with its median. "
+            "Probabilistic reconciliation is not built yet.",
+            "",
+            "**The rota: staffing every dispatch area, priced against an oracle**",
+            "",
+            f"Inputs are illustrative and replaceable ([inputs/decision.toml]"
+            f"(inputs/decision.toml)): one unit handles {inputs.demand_per_unit:g} incidents a "
+            f"day, a spare unit-day costs {inputs.cost_over:g} and a missing one "
+            f"{inputs.cost_under:g}, so the costs imply staffing at the {implied:.0%} "
+            f"quantile. The oracle, knowing each day's demand, staffs "
+            f"{staffing.oracle_units:.1f} units a day and costs nothing. Units and cost are "
+            f"summed over the {len(hierarchy.rows_at('area'))} areas and averaged over the "
+            f"{origins.horizon} days ahead.",
+            "",
+            tables.markdown_table(
+                [
+                    "Service level",
+                    "Method",
+                    "Units staffed per day",
+                    "Realised cost per day against the oracle",
+                    f"Cost minus {best}",
+                ],
+                staffing_rows,
+            ),
+        ]
+    )
+    typer.echo(block)
+    if write:
+        try:
+            README.write_text(
+                tables.splice(README.read_text(encoding="utf-8"), block),
+                encoding="utf-8",
+                newline="\n",
+            )
+        except ValueError as error:
+            typer.echo(str(error))
+            raise typer.Exit(code=1) from error
+        typer.echo(f"wrote {README}")
+
+
+def _names(option: str) -> list[str]:
+    """Split a comma-separated option into names.
+
+    Args:
+        option: The option's value.
+
+    Returns:
+        The non-blank names, stripped, in order.
+    """
+    return [name.strip() for name in option.split(",") if name.strip()]
+
+
+def _method_label(name: str) -> str:
+    """Name a checkpoint the way the tables do.
+
+    Args:
+        name: A checkpoint name, such as ``N-HiTS-refit4``.
+
+    Returns:
+        For example ``N-HiTS, refitted every 4 weeks`` or ``LightGBM, global``.
+    """
+    if name == "LightGBM":
+        return "LightGBM, global"
+    model, _, refit = name.partition("-refit")
+    if refit.isdigit():
+        return f"{model}, refitted every {refit} weeks"
+    return name
+
+
+def _skill_rows(
+    label: str,
+    scores: Scores,
+    naive: Scores,
+    seconds: float,
+    window_origins: int,
+    listed: list[Origin],
+    start: int,
+) -> list[list[str]]:
+    """One results row per hierarchy level for one method.
+
+    Args:
+        label: The method's name in the table.
+        scores: Its scores, from ``start`` onward.
+        naive: Seasonal naive on the same origins.
+        seconds: Its compute time for the full schedule.
+        window_origins: Origins in the worst-coverage window.
+        listed: Every origin in the schedule.
+        start: The first origin scored.
+
+    Returns:
+        Three rows of cells.
+    """
+    from headroom.report import tables
+    from headroom.score.coverage import level_index
+
+    nominal_at = list(scores.nominal).index(MAIN_NOMINAL)
+    median_at = level_index(lv.REPORTING, 0.5)
+    rows = []
+    for i, (level, level_name) in enumerate(LEVEL_NAMES.items()):
+        crps = scores.by_origin(scores.crps, level)
+        pinball = scores.by_origin(scores.pinball[..., median_at], level)
+        if scores is naive:
+            crps_skill = pinball_skill = "reference"
+        else:
+            crps_skill = tables.number(
+                tables.Estimate.of(skill_interval(crps, naive.by_origin(naive.crps, level))),
+                places=3,
+                signed=True,
+            )
+            naive_pinball = naive.by_origin(naive.pinball[..., median_at], level)
+            pinball_skill = tables.number(
+                tables.Estimate.of(skill_interval(pinball, naive_pinball)),
+                places=3,
+                signed=True,
+            )
+        hits = scores.by_origin(scores.hits[..., nominal_at].astype(np.float64), level)
+        at, worst = tables.worst_window(hits, window_origins)
+        widths = scores.by_origin(scores.widths[..., nominal_at], level)
+        rows.append(
+            [
+                label if i == 0 else "",
+                level_name,
+                crps_skill,
+                pinball_skill,
+                tables.number(tables.Estimate.of(confidence_interval(hits)), places=3),
+                f"{worst:.3f} ({listed[start + at].day})",
+                tables.number(tables.Estimate.of(confidence_interval(widths))),
+                tables.duration(seconds) if i == 0 else "",
+            ]
+        )
+    return rows
 
 
 def _from_origin(scores: Scores, start: int) -> Scores:

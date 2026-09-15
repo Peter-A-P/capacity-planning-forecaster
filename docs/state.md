@@ -1,6 +1,6 @@
 # State of the build
 
-**Last updated: 2026-09-13.** Read this first if you are picking the project up. It says
+**Last updated: 2026-09-15.** Read this first if you are picking the project up. It says
 what exists, what has been measured, what decision is open, and what to do next.
 
 `PLAN.md` is the design and takes precedence. `docs/methods.md` has every measured number
@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**207 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**234 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -31,6 +31,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
 | `test_hierarchy.py` | 14 | The summing matrix and coherence |
 | `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
+| `test_report.py` | 27 | README markers (refused if missing, idempotent), interval formatting, worst window |
 
 ### Built and measured
 
@@ -70,10 +71,15 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   reconciled errors).
 - **Decision layer: done.** `headroom decide`, inputs in `inputs/decision.toml`
   (illustrative). At the cost-implied 80 percent, ETS costs 65.76 a day against seasonal
-  naive's 85.13; LightGBM ties ETS at 80 and costs 15 percent more at 95. Add N-HiTS
-  (`--models ETS,LightGBM,N-HiTS-refit4`) once its run is done.
-- **Charts and the report command.** The README results tables are still empty and must
-  be filled by the report command, never by hand (`CLAUDE.md`).
+  naive's 85.13; LightGBM ties ETS at 80 and costs 15 percent more at 95. N-HiTS costs
+  81.92 at 80 percent, 25 percent more than ETS.
+- **Report command: done 2026-09-15; charts not built.** `headroom report` scores every
+  finished checkpoint on origins 53 to 963, picks the best statistical model by CRPS skill
+  averaged over the levels (ETS +0.214, Theta +0.204, MSTL +0.098), reconciles and staffs
+  from it, and writes the three README tables between the report markers. About 10
+  minutes. Its numbers reproduce `score`, `reconcile` and `decide` exactly; `decide` now
+  shares its staffing helpers. Rerun it whenever a checkpoint changes. The fan and
+  coverage charts are still to build.
 - **Dashboard.** Deliberately held until project 01 builds the static decision-app pattern
   in its week 7 (Oct 19 to 25 2026), so 08 reuses it rather than inventing it. Peter's
   call, recorded in `PLAN.md`.
@@ -312,8 +318,9 @@ anticipate, which is worth more than confirming it would have been.
 
 ## Watch out for
 
-- **The README tables are filled by the report command, never by hand** (`CLAUDE.md`).
-  The command does not exist yet, so the tables are still empty and should stay that way.
+- **The README tables are filled by `headroom report`, never by hand** (`CLAUDE.md`).
+  Everything between the `report:start` and `report:end` markers is overwritten on every
+  run; edit the command, not the README.
 - **Every reported number carries a confidence interval.** `headroom.score.bootstrap`.
 - **State the conformal assumption wherever coverage is shown.** Adaptive conformal
   guarantees long-run average coverage, not per-period. Saying otherwise is the single
