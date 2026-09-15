@@ -739,6 +739,34 @@ reported compute.
 
 ---
 
+## PatchTST: built, timed, not yet run
+
+Built 2026-09-15 through the same wrapper as N-HiTS (`headroom.models.neural.GlobalNeural`),
+so it is fitted, forecast and refitted identically: the same 112-day input, 1,000 training
+steps, 37 series and 1,024 windows per batch, robust scaler and seed 0.
+Its architecture and learning rate (0.0001) are NeuralForecast's defaults: three encoder
+layers, 16 heads, hidden size 128, patches of 16 days with a stride of 8, and reversible
+instance normalisation. Nothing was tuned.
+
+| Measured 2026-09-15 on machine B, nothing else computing | Seconds |
+|---|---:|
+| One fit at origin 482 (2017-03-27) | 1,356 |
+| One forecast from fitted weights | 0.07 |
+
+A fit is about five times an N-HiTS fit (274 seconds at the median). That forces the
+schedule question again:
+
+| Refit every | Fits | Estimated run |
+|---|---:|---:|
+| 4 origins, as N-HiTS | 241 | about 91 hours |
+| 13 origins | 75 | about 28 hours |
+| 16 origins | 61 | about 23 hours |
+
+Not yet decided; AutoARIMA ran first. The single fit's city CRPS at that origin, 103.0, is
+one fit and says nothing about the model (see the second-seed check above).
+
+---
+
 ## Conformal intervals
 
 ### What each method assumes

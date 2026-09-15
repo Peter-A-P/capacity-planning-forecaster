@@ -58,8 +58,11 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   (city +23.85 [+13.76, +33.74]), though one fit's city CRPS can move by 56.
 - **PatchTST: built, not run.** `headroom neural --model PatchTST`, through the same
   `GlobalNeural` wrapper as N-HiTS: NeuralForecast's architecture defaults and learning
-  rate, the same 112-day input and the same 1,000-step training budget. Next: time one
-  full fit on an idle machine, then choose its refit schedule. Needs
+  rate, the same 112-day input and the same 1,000-step training budget. **One fit is
+  1,356 seconds** on an idle machine B, five times N-HiTS, so monthly refits would be
+  about 91 hours; every 13 origins about 28, every 16 about 23. Schedule not chosen yet
+  (`docs/methods.md`, PatchTST). AutoARIMA was run first, started 2026-09-15 09:13 with
+  `--save-every 25` to cut checkpoint rewrites. Needs
   `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The neural tests skip
   where NeuralForecast is not installed, which includes CI.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
