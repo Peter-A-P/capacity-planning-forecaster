@@ -159,6 +159,13 @@ own 199-level scoring grid, and the model sees demand only on synthetic dates, l
 statistical models: no holidays, unlike LightGBM. The refit flag in
 `headroom.backtest.origins`, which nothing read before, is what drives it.
 
+**Result, 2026-09-15 (monthly refits).** N-HiTS loses to ETS at every level: CRPS minus
+ETS city +28.39 [+21.72, +40.03], borough +7.19 [+5.97, +9.39], dispatch area +1.98
+[+1.82, +2.29], coverage at 90 percent 0.58 to 0.68, about 18.3 hours of fitting. The
+refit schedule is not the cause, and a conformal version of its median is still behind.
+Section 9's candidate 3 is supported more strongly than this section expected;
+`docs/neural-verdict.md` has the reading and what it does not claim.
+
 ### 2.7a A pretrained foundation model, with the leak stated (added 2026-09-13)
 
 TimesFM, Google Research's pretrained time-series foundation model, is added as a third

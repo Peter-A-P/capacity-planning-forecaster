@@ -544,6 +544,11 @@ Origins 53 to 963 for every method, so the reconciled and LightGBM rows are pair
 the rest. Cost per day summed over the 31 areas, in cost units; the oracle needed 409.3
 units a day.
 
+N-HiTS was added once its run finished (2026-09-15): at 80, 90 and 95 percent it costs
+81.92, 77.08 and 77.85 a day, minus ETS +16.16 [+14.65, +18.14], +4.81 [+3.16, +6.85] and
+-5.14 [-6.92, -3.04]. The last is not a win; `docs/neural-verdict.md` explains why its
+nominal 95 percent staffs like ETS's 87th.
+
 | Service level | Method | Cost per day | Units per day | Minus ETS, paired |
 |---|---|---|---:|---|
 | **80%, implied by the costs** | Seasonal naive | 85.13 [82.74, 87.98] | 457.6 | +19.37 [+18.84, +19.88] |
@@ -580,8 +585,64 @@ is coherent by construction whatever the forecasts were.
 
 ## N-HiTS
 
-`PLAN.md` section 2.7. Built 2026-09-14 in `headroom.models.neural`; not yet run over the
-backtest.
+`PLAN.md` section 2.7. Built 2026-09-14 in `headroom.models.neural`; run over all 964
+weekly origins with monthly refits, 2026-09-14 08:07 to 2026-09-15 06:37.
+
+### Measured result: N-HiTS loses to ETS at every level
+
+`headroom score --models ETS,LightGBM,N-HiTS-refit4`, origins 53 to 963, paired.
+
+| Level | CRPS | Skill against seasonal naive | Minus ETS | Coverage at 90% | Mean width |
+|---|---|---|---|---|---|
+| City | 163.78 [150.27, 182.80] | +0.008 [-0.043, +0.042] | +28.39 [+21.72, +40.03] | 0.581 [0.562, 0.598] | 399.5 [382.3, 414.8] |
+| Borough | 39.58 [36.95, 43.41] | +0.036 [-0.006, +0.063] | +7.19 [+5.97, +9.39] | 0.633 [0.620, 0.643] | 107.9 [104.5, 110.8] |
+| Dispatch area | 10.25 [9.85, 10.87] | +0.073 [+0.046, +0.089] | +1.98 [+1.82, +2.29] | 0.676 [0.667, 0.683] | 32.5 [31.8, 33.1] |
+
+For comparison on the same origins, ETS's skill is +0.180, +0.211 and +0.252, and
+LightGBM's +0.190, +0.222 and +0.252.
+
+* **At the city N-HiTS does not beat seasonal naive**, and it is 21 percent worse than ETS
+  in CRPS. At the dispatch areas it beats naive by 7 percent and is 24 percent worse than
+  ETS.
+* **Its quantiles are badly overconfident**: 58 to 68 percent coverage at 90 percent
+  nominal, with intervals about half as wide as ETS's. The multi-quantile loss did not
+  produce a calibrated distribution. Its quantile heads never crossed.
+
+### Three checks on whether the result is fair to it
+
+**The monthly refit is not the cause.** CRPS minus ETS by weeks since the last refit, where
+0 is a forecast from weights fitted that same origin:
+
+| Level | 0 | 1 | 2 | 3 |
+|---|---:|---:|---:|---:|
+| City | +26.3 | +28.3 | +34.8 | +24.1 |
+| Borough | +6.4 | +7.4 | +8.1 | +6.9 |
+| Dispatch area | +1.90 | +2.06 | +2.05 | +1.91 |
+
+A freshly fitted N-HiTS is as far behind ETS as one three weeks stale; there is no trend.
+Weekly refits (964 fits, about 73 hours of fitting) would have cost about 55 hours more,
+and there is no sign they would have closed the gap.
+
+**Both its median and its spread are worse.** The absolute error of its median is 12, 14
+and 17 percent above ETS's at the city, boroughs and areas. Wrapping that median in the
+same conformal predictive distribution LightGBM uses fixes the calibration (coverage 0.903,
+0.902, 0.904) and still leaves it behind ETS: city +18.56 [+12.78, +29.28], borough +5.26
+[+4.17, +7.23], dispatch area +1.61 [+1.47, +1.87]. At the city, the overconfident spread
+was about a third of the gap and the median the rest.
+
+**Compute.** 241 fits, median 274 seconds (10th to 90th percentile 264 to 310), so about
+18.3 hours of fitting on an idle machine. One fit recorded 11,194 seconds because the
+machine slept through it, and the fits while another session shared the machine ran up to
+about 310; both are why the median, not the total, is the reported figure. The run's wall
+clock, 22.5 hours, includes a three-hour sleep.
+
+### What is still not settled
+
+A single seed and fixed, untuned settings. The GPU test above showed one fit at one origin
+scoring a city CRPS of 103 on the GPU against 159 on the CPU, so the sensitivity of this
+result to the luck of a fit is real and unmeasured. The gap is consistent across 911
+origins, every refit position and all three levels, which makes a reversal unlikely, but a
+second-seed refit of a sample of origins is what would put a number on it.
 
 ### What it is given
 

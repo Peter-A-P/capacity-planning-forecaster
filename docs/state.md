@@ -48,13 +48,12 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ### Not built yet
 
-- **N-HiTS: running.** Monthly refits (`headroom neural --refit-every 4`), started
-  2026-09-14 08:07, about 303 seconds a fit, expected to finish about 05:00 on 2026-09-15.
-  Log and resume script in `HEADROOM_OUT` (`nhits-refit4.log`, `run-nhits-refit4.ps1`).
-  Then `uv run headroom score --models ETS,LightGBM,N-HiTS-refit4`. The GTX 1650 was tested
-  and gave no speedup; exclude the 08:30 to 08:45 fits from its compute. **Follow-up:** a
-  second-seed refit of a sample of origins, because one fit's forecasts shift a lot with
-  the arithmetic path (`docs/methods.md`). Needs
+- **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
+  scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
+  +1.98; coverage at 90 percent 0.58 to 0.68; about 18.3 hours of fitting. Not the refit
+  schedule (no trend with weeks since refit), and not calibration alone (a conformal
+  median is still behind ETS). **Owed:** a second-seed refit of a sample of origins.
+  **PatchTST** not built. Needs
   `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. Its tests skip where
   NeuralForecast is not installed, which includes CI. **PatchTST** not built.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
@@ -287,7 +286,9 @@ anticipate, which is worth more than confirming it would have been.
 2. **Choosing the model by MAE.** Not supported by the statistical models: MAE and CRPS
    rank ETS, Theta, MSTL identically at every level. Open for LightGBM and the neural
    models.
-3. **A global neural model as the default.** Week 2.
+3. **A global neural model as the default.** Supported, strongly: N-HiTS loses to ETS at
+   every level at ten times the compute, and LightGBM shows learning across series was
+   never the gain. Now the leading candidate alongside finding 4 below.
 4. **New: adaptive conformal cannot widen past its calibration window.** Finding 1 above.
    This is the strongest candidate: it is measured, it is structural, it explains a
    negative result the plan expected to be positive, and the remedy is nameable. Written
