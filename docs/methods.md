@@ -235,7 +235,8 @@ have to fix.
 
 ETS, Theta and MSTL through StatsForecast, each giving its own prediction quantiles, at
 the same 964 weekly origins as the baseline, on the same 1,095-day trailing window, with
-every model refitted at every origin. AutoARIMA is deferred (see Compute below).
+every model refitted at every origin. AutoARIMA was deferred out of that batched run for
+cost and run alone afterwards; its result is below.
 
 ### Measured result
 
@@ -300,6 +301,47 @@ The paired CRPS difference, Theta minus ETS, bootstrapped over origins as above:
 Every interval excludes zero. **ETS is the best statistical model at every level**, and it
 is the model every later comparison (LightGBM, the neural models, TimesFM) is paired
 against.
+
+### AutoARIMA: fifteen hours to confirm ETS
+
+AutoARIMA is the most expensive statistical baseline and the one most likely, a priori, to
+take the top row off ETS. It was held out of the batched run for cost and run alone on
+2026-09-15, weekly origins, the same 1,095-day trailing window, refitted at every origin:
+`headroom stats --models AutoARIMA --step 7 --save-every 25`. **964 origins in 15.21 hours
+wall clock**, 55 to 57 seconds an origin with no trend across the record.
+
+Scored paired against the others on 2026-09-16. These numbers are on the **911 origins from
+2009-01-05 that every model now shares**, the window that starts late enough for LightGBM's
+conformal distribution and MinT's covariance to exist. The tables above predate that window
+and score more origins, which is why ETS's CRPS differs a little between them; within each
+table the comparison is paired and internally consistent.
+
+| Level | ETS CRPS | AutoARIMA CRPS | AutoARIMA minus ETS, paired | AutoARIMA coverage at 90% | Mean width |
+|---|---|---|---|---:|---:|
+| City | 135.40 [126.62, 144.61] | 136.39 [127.84, 146.46] | +0.99 [-0.65, +3.56] | 0.906 [0.895, 0.921] | 794 [760, 834] |
+| Borough | 32.39 [30.67, 34.36] | 33.35 [31.61, 35.55] | +0.96 [+0.71, +1.38] | 0.902 [0.893, 0.912] | 193 [186, 202] |
+| Dispatch area | 8.274 [7.991, 8.623] | 8.527 [8.227, 8.922] | +0.254 [+0.212, +0.312] | 0.899 [0.893, 0.906] | 49.3 [48.0, 50.7] |
+
+Positive means AutoARIMA is worse. What this says:
+
+* **AutoARIMA does not beat ETS anywhere.** At the city the paired interval straddles zero,
+  so that level is a tie. At the borough and the dispatch area the interval is clear of
+  zero and AutoARIMA is beaten outright. By mean CRPS skill it ranks **third of the four**
+  statistical models, behind ETS (+0.214) and Theta (+0.204) at +0.197, ahead only of MSTL.
+* **It is the best calibrated of the four**, at 0.906, 0.902 and 0.899 against a 0.90
+  target, closer than ETS at every level, and its city intervals are the narrowest of the
+  statistical models at 794 against ETS's 842. That is a real merit and it still is not
+  enough: better-shaped intervals around a slightly worse median lose on CRPS.
+* **The cost is the point.** 56 seconds an origin against ETS's 10.8 standalone, about five
+  times, for a result that moves nothing. This is the second entry in the project's
+  rejected column, and unlike the neural verdict it is a negative result about a model
+  that behaved perfectly well.
+
+One useful by-product: at `--save-every 25` the checkpoint overhead was **0.20 hours out of
+15.21 wall clock, about 1.3 percent**, against the roughly 38 percent the three-model run
+paid at `--save-every 5`. The quadratic rewrite cost recorded under Compute below is real
+but can be bought off with the save interval; it does not need the per-batch file format
+until a run is much longer than this one.
 
 ### MSTL: both its median and its spread are worse, and the spread is structural
 
@@ -1067,5 +1109,9 @@ here with the resolution it bought.
 
 Those estimates are machine A's. **Weekly was chosen** once machine B measured three to
 four times faster, which put weekly within one overnight run and kept the full resolution
-through 2020. AutoARIMA at weekly origins on machine B is about 17 hours alone and is
-deferred to its own run.
+through 2020. AutoARIMA at weekly origins on machine B was projected at about 17 hours
+alone and deferred to its own run; that run happened on 2026-09-15 and **came in at 15.21
+hours wall clock**, 56 seconds an origin, against the 65.0 the three-origin timing above
+predicted. The three-origin median over-predicted by about 16 percent, though the full-run
+mean falls inside the 55 to 77 range those three spanned. Three origins fix the order of
+magnitude and no more; the full-run mean is the number to quote.

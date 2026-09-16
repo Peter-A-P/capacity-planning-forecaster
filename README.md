@@ -9,10 +9,12 @@ defensible number on both, site by site, rolling up to the region.
 [PLAN.md](PLAN.md): a two-week build on public demand series, everything on a desktop CPU.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
-intervals and the statistical models (ETS, Theta, MSTL over 964 weekly origins) are
-measured in [docs/methods.md](docs/methods.md), and so are the global LightGBM model,
-N-HiTS, MinT reconciliation and the staffing decision layer. N-HiTS did not earn its
-complexity ([docs/neural-verdict.md](docs/neural-verdict.md)). PatchTST, TimesFM and the
+intervals and the statistical models (ETS, Theta, MSTL and AutoARIMA, 964 weekly origins
+each) are measured in [docs/methods.md](docs/methods.md), and so are the global LightGBM
+model, N-HiTS, MinT reconciliation and the staffing decision layer. N-HiTS did not earn
+its complexity ([docs/neural-verdict.md](docs/neural-verdict.md)), and neither did
+AutoARIMA, which cost five times ETS to finish third of the four statistical models. The
+table below shows the best statistical model, which is ETS. PatchTST, TimesFM and the
 probabilistic reconciliation are not built yet, and their rows say so. The tables below
 are written by `headroom report` from the backtest's checkpoints and are never edited by
 hand. [docs/state.md](docs/state.md) is the working state of the build.

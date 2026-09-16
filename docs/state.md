@@ -1,6 +1,6 @@
 # State of the build
 
-**Last updated: 2026-09-15.** Read this first if you are picking the project up. It says
+**Last updated: 2026-09-16.** Read this first if you are picking the project up. It says
 what exists, what has been measured, what decision is open, and what to do next.
 
 `PLAN.md` is the design and takes precedence. `docs/methods.md` has every measured number
@@ -43,7 +43,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | Backtest | `headroom.backtest` | Done. 964 weekly origins, resumable checkpointing |
 | Baseline | `headroom.models.baselines` | Done. Seasonal naive with per-horizon empirical residual quantiles |
 | Conformal | `headroom.conformal` | Done. Split, adaptive (ACI), aggregated (AgACI) |
-| Statistical models | `headroom.models.stats` | Done for ETS, Theta, MSTL: 964 weekly origins, scored. AutoARIMA deferred |
+| Statistical models | `headroom.models.stats` | Done. ETS, Theta, MSTL and AutoARIMA, 964 weekly origins each, all scored. ETS wins |
 | LightGBM | `headroom.models.boosting`, `headroom.conformal.predictive` | Done. 964 weekly origins, scored: ties ETS at every level |
 | CLI | `headroom.cli` | Done for what exists, including `boost` and `score` |
 
@@ -61,8 +61,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   rate, the same 112-day input and the same 1,000-step training budget. **One fit is
   1,356 seconds** on an idle machine B, five times N-HiTS, so monthly refits would be
   about 91 hours; every 13 origins about 28, every 16 about 23. Schedule not chosen yet
-  (`docs/methods.md`, PatchTST). AutoARIMA was run first, started 2026-09-15 09:13 with
-  `--save-every 25` to cut checkpoint rewrites. Needs
+  (`docs/methods.md`, PatchTST); this is the next long run to start. Needs
   `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The neural tests skip
   where NeuralForecast is not installed, which includes CI.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
@@ -83,7 +82,8 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   81.92 at 80 percent, 25 percent more than ETS.
 - **Report command: done 2026-09-15; charts not built.** `headroom report` scores every
   finished checkpoint on origins 53 to 963, picks the best statistical model by CRPS skill
-  averaged over the levels (ETS +0.214, Theta +0.204, MSTL +0.098), reconciles and staffs
+  averaged over the levels (ETS +0.214, Theta +0.204, AutoARIMA +0.197, MSTL +0.098),
+  reconciles and staffs
   from it, and writes the three README tables between the report markers. About 10
   minutes. Its numbers reproduce `score`, `reconcile` and `decide` exactly; `decide` now
   shares its staffing helpers. Rerun it whenever a checkpoint changes. The fan and
@@ -94,6 +94,32 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---
+
+## Done: AutoARIMA, beaten by ETS at five times the cost
+
+**Run 2026-09-15 09:13 to 2026-09-16 00:25, scored 2026-09-16.** 964 weekly origins in
+15.21 hours wall clock, 56 seconds an origin. Tables in `docs/methods.md` under
+"AutoARIMA: fifteen hours to confirm ETS". Paired CRPS difference against ETS on origins
+53 to 963:
+
+| Level | AutoARIMA minus ETS | AutoARIMA skill against seasonal naive | Coverage at 90% |
+|---|---|---|---|
+| City | +0.99 [-0.65, +3.56] | +0.174 [+0.155, +0.191] | 0.906 |
+| Borough | +0.96 [+0.71, +1.38] | +0.187 [+0.174, +0.199] | 0.902 |
+| Dispatch area | +0.254 [+0.212, +0.312] | +0.229 [+0.219, +0.237] | 0.899 |
+
+Positive is worse. A tie at the city, beaten outright below it, third of four statistical
+models by mean skill. It is the best calibrated of the four and has the narrowest city
+intervals, and it still loses on CRPS. **The README did not change**: the report shows
+only the best statistical model and ETS kept that row, so re-running it produced a
+byte-identical file. That is the correct outcome and worth knowing before anyone re-runs
+it expecting a diff.
+
+Saving every 25 origins instead of 5 cut checkpoint overhead from about 38 percent of wall
+clock to 1.3 percent. Use `--save-every 25` on any long statistical run.
+
+Commands: `uv run --extra stats headroom stats --models AutoARIMA --step 7 --save-every 25`,
+then `uv run headroom score --models ETS,Theta,MSTL,AutoARIMA,LightGBM,N-HiTS-refit4`.
 
 ## Done: LightGBM, global, ties ETS
 
