@@ -28,7 +28,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Final
 
 import numpy as np
 import numpy.typing as npt
@@ -72,6 +72,15 @@ MAIN_NOMINAL = 0.90
 #: Models whose checkpoints hold a median only, and the one-level grid they are stored on.
 POINT_MODELS = frozenset({"LightGBM"})
 POINT_LEVELS = np.array([0.5])
+
+#: Models PLAN.md section 1 promises a row for, as (network name, label when not built).
+#: A row is written as "not built" only while no checkpoint for that network is reported,
+#: so a model cannot appear as both run and unbuilt.
+PROMISED_ROWS: Final[tuple[tuple[str, str], ...]] = (
+    ("N-HiTS", "N-HiTS"),
+    ("PatchTST", "PatchTST"),
+    ("TimesFM", "TimesFM, zero-shot (clean window only)"),
+)
 
 
 def output_dir() -> Path:
@@ -1177,7 +1186,11 @@ def report(
         (f"Best statistical: {best}", candidates[best], seconds[best]),
     ]
     methods += [(_method_label(name), others[name], seconds[name]) for name in others]
-    methods += [("PatchTST", None, 0.0), ("TimesFM, zero-shot (clean window only)", None, 0.0)]
+    # Only promise a "not built" row for a network no checkpoint was reported for, so a
+    # model that has since been run cannot appear twice with contradictory rows.
+    built = {_base_model(name) for name in others}
+    unbuilt = [label for network, label in PROMISED_ROWS if network not in built]
+    methods += [(label, None, 0.0) for label in unbuilt]
 
     skill_rows: list[list[str]] = []
     for label, scores, cost in methods:
@@ -1233,6 +1246,29 @@ def report(
                 ]
             )
 
+    # Every note names the models actually scored, so none of them can go stale when a
+    # model is added, renamed or run on a different schedule.
+    # Base names, not table labels: a label carries its own comma ("N-HiTS, refitted every
+    # 4 weeks") and two of those inside a list make the sentence unreadable.
+    scored_own = [_base_model(name) for name in others if name not in POINT_MODELS]
+    own_quantiles = f", {_listing(scored_own)}," if scored_own else ""
+    conformal_note = _listing([_method_label(n) for n in others if n in POINT_MODELS])
+    refits = [
+        f"{_base_model(name)} every {every}"
+        for name in others
+        if (every := _refit_every(name)) is not None
+    ]
+    refit_note = (
+        f" The neural models are refitted on a schedule, {_listing(refits)} origins, and "
+        f"{'it forecasts' if len(refits) == 1 else 'each forecasts'} every origin from its "
+        "latest weights."
+        if refits
+        else ""
+    )
+    missing = [network for network, _ in PROMISED_ROWS if network not in built]
+    verb = "is" if len(missing) == 1 else "are"
+    unbuilt_note = f" {_listing(missing)} {verb} not built yet." if missing else ""
+
     first, last = listed[start].day, listed[-1].day
     block = "\n".join(
         [
@@ -1263,9 +1299,9 @@ def report(
             "better and zero is no better than the baseline.",
             "",
             "**Coverage, and what it does and does not promise.** Seasonal naive (quantiles "
-            "of its own past errors), the statistical models and N-HiTS are scored on their "
-            "own quantiles with no conformal step, so no coverage is guaranteed for them. "
-            "LightGBM forecasts a median only, and its distribution "
+            f"of its own past errors), the statistical models{own_quantiles} are scored on "
+            "their own quantiles with no conformal step, so no coverage is guaranteed for "
+            f"them. {conformal_note} forecasts a median only, and its distribution "
             "is conformal, built from its own errors over the previous 52 origins. Conformal "
             "coverage holds on average over time and only if errors are exchangeable, which "
             "demand through a shift is not, so it is not promised in any one window. The "
@@ -1278,9 +1314,7 @@ def report(
             "[docs/methods.md](docs/methods.md)); the median, so that time lost to other "
             "work or to the machine sleeping is not counted. The statistical models were "
             "fitted three at a time and each is given a third. LightGBM is the only model "
-            "given the holiday calendar. N-HiTS is refitted every fourth origin and "
-            "forecasts every origin from its latest weights. PatchTST and TimesFM are not "
-            "built yet.",
+            f"given the holiday calendar.{refit_note}{unbuilt_note}",
             "",
             f"**Reconciliation: {best} with MinT**",
             "",
@@ -1365,6 +1399,47 @@ def _method_label(name: str) -> str:
     if refit.isdigit():
         return f"{model}, refitted every {refit} weeks"
     return name
+
+
+def _base_model(name: str) -> str:
+    """The network's own name, without the refit schedule its checkpoint is tagged with.
+
+    Args:
+        name: A checkpoint name, such as ``PatchTST-refit13``.
+
+    Returns:
+        For example ``PatchTST``. A name with no schedule is returned unchanged.
+    """
+    return name.partition("-refit")[0]
+
+
+def _refit_every(name: str) -> int | None:
+    """The refit spacing a checkpoint name records, if it records one.
+
+    Args:
+        name: A checkpoint name, such as ``PatchTST-refit13``.
+
+    Returns:
+        The number of origins between refits, or None if the name carries no schedule.
+    """
+    refit = name.partition("-refit")[2]
+    return int(refit) if refit.isdigit() else None
+
+
+def _listing(items: list[str]) -> str:
+    """Join names the way the notes read them out.
+
+    Args:
+        items: Names, already in the order they should be read.
+
+    Returns:
+        ``a``, ``a and b``, or ``a, b and c``. Empty for no items.
+    """
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def _skill_rows(

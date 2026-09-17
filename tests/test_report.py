@@ -11,7 +11,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from headroom.cli import _method_label
+from headroom.cli import (
+    PROMISED_ROWS,
+    _base_model,
+    _listing,
+    _method_label,
+    _refit_every,
+)
 from headroom.report.tables import (
     END,
     START,
@@ -133,3 +139,46 @@ def test_worst_window_refuses_a_window_longer_than_the_series():
 )
 def test_method_labels(name, label):
     assert _method_label(name) == label
+
+
+@pytest.mark.parametrize(
+    ("name", "network", "every"),
+    [
+        ("PatchTST-refit13", "PatchTST", 13),
+        ("N-HiTS-refit4", "N-HiTS", 4),
+        ("LightGBM", "LightGBM", None),
+        ("ETS", "ETS", None),
+    ],
+)
+def test_a_checkpoint_name_splits_into_network_and_schedule(name, network, every):
+    assert _base_model(name) == network
+    assert _refit_every(name) == every
+
+
+@pytest.mark.parametrize(
+    ("items", "expected"),
+    [
+        ([], ""),
+        (["a"], "a"),
+        (["a", "b"], "a and b"),
+        (["a", "b", "c"], "a, b and c"),
+    ],
+)
+def test_listing_reads_as_a_sentence(items, expected):
+    assert _listing(items) == expected
+
+
+def test_a_network_that_was_run_is_never_also_listed_as_not_built():
+    # The bug this guards: a PatchTST checkpoint was reported and the table still carried
+    # a hardcoded "PatchTST | not built" row beneath it, saying both things at once.
+    reported = ["LightGBM", "N-HiTS-refit4", "PatchTST-refit13"]
+    built = {_base_model(name) for name in reported}
+    unbuilt = [label for network, label in PROMISED_ROWS if network not in built]
+    assert unbuilt == ["TimesFM, zero-shot (clean window only)"]
+
+
+def test_every_promised_network_is_named_the_way_its_checkpoints_are():
+    # PROMISED_ROWS is matched against _base_model output, so its keys have to be the
+    # network names, not table labels, or a built model would never match its promise.
+    for network, _ in PROMISED_ROWS:
+        assert _base_model(f"{network}-refit7") == network

@@ -11,13 +11,19 @@ defensible number on both, site by site, rolling up to the region.
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
 intervals and the statistical models (ETS, Theta, MSTL and AutoARIMA, 964 weekly origins
 each) are measured in [docs/methods.md](docs/methods.md), and so are the global LightGBM
-model, N-HiTS, MinT reconciliation and the staffing decision layer. N-HiTS did not earn
-its complexity ([docs/neural-verdict.md](docs/neural-verdict.md)), and neither did
-AutoARIMA, which cost five times ETS to finish third of the four statistical models. The
-table below shows the best statistical model, which is ETS. PatchTST, TimesFM and the
-probabilistic reconciliation are not built yet, and their rows say so. The tables below
-are written by `headroom report` from the backtest's checkpoints and are never edited by
-hand. [docs/state.md](docs/state.md) is the working state of the build.
+model, N-HiTS, PatchTST, MinT reconciliation and the staffing decision layer. The table
+below shows the best statistical model, which is ETS.
+
+**Neither neural model earned its complexity, and they failed differently**
+([docs/neural-verdict.md](docs/neural-verdict.md)). N-HiTS is beaten everywhere and its
+90 percent intervals cover 58 to 68 percent of outcomes. PatchTST is a good forecaster
+that ties ETS at the city and borough, loses narrowly at the dispatch areas, and costs
+about seventeen times as much to fit. AutoARIMA did not earn its cost either: five times
+ETS to finish third of the four statistical models. TimesFM and probabilistic
+reconciliation are not built yet, and their rows say so.
+
+The tables below are written by `headroom report` from the backtest's checkpoints and are
+never edited by hand. [docs/state.md](docs/state.md) is the working state of the build.
 
 ## Result
 
@@ -40,14 +46,16 @@ All numbers from `headroom report`: 911 weekly forecast origins, 2009-01-05 to 2
 | N-HiTS, refitted every 4 weeks | City | +0.008 [-0.043, +0.042] | +0.085 [+0.039, +0.114] | 0.581 [0.562, 0.598] | 0.236 (2020-06-08) | 400 [382, 415] | 18.4 h |
 |  | Borough | +0.035 [-0.006, +0.063] | +0.099 [+0.061, +0.123] | 0.633 [0.620, 0.643] | 0.337 (2020-06-01) | 108 [104, 111] |  |
 |  | Dispatch area | +0.073 [+0.046, +0.089] | +0.123 [+0.101, +0.136] | 0.676 [0.666, 0.683] | 0.392 (2020-06-08) | 32.5 [31.8, 33.1] |  |
-| PatchTST | not built |  |  |  |  |  |  |
+| PatchTST, refitted every 13 weeks | City | +0.201 [+0.171, +0.224] | +0.205 [+0.171, +0.230] | 0.896 [0.884, 0.909] | 0.593 (2020-05-04) | 778 [743, 817] | 27.3 h |
+|  | Borough | +0.218 [+0.195, +0.235] | +0.219 [+0.193, +0.237] | 0.901 [0.892, 0.909] | 0.625 (2020-05-04) | 190 [183, 197] |  |
+|  | Dispatch area | +0.243 [+0.229, +0.252] | +0.243 [+0.229, +0.253] | 0.900 [0.895, 0.905] | 0.698 (2020-05-04) | 49.3 [48.2, 50.6] |  |
 | TimesFM, zero-shot (clean window only) | not built |  |  |  |  |  |  |
 
 Skill is one minus the method's mean score over seasonal naive's, so higher is better and zero is no better than the baseline.
 
-**Coverage, and what it does and does not promise.** Seasonal naive (quantiles of its own past errors), the statistical models and N-HiTS are scored on their own quantiles with no conformal step, so no coverage is guaranteed for them. LightGBM forecasts a median only, and its distribution is conformal, built from its own errors over the previous 52 origins. Conformal coverage holds on average over time and only if errors are exchangeable, which demand through a shift is not, so it is not promised in any one window. The worst window is the lowest coverage in a trailing 91-day window (13 weekly origins), dated by the last origin in it. It is the single worst stretch of one history, so it carries no bootstrap interval.
+**Coverage, and what it does and does not promise.** Seasonal naive (quantiles of its own past errors), the statistical models, N-HiTS and PatchTST, are scored on their own quantiles with no conformal step, so no coverage is guaranteed for them. LightGBM, global forecasts a median only, and its distribution is conformal, built from its own errors over the previous 52 origins. Conformal coverage holds on average over time and only if errors are exchangeable, which demand through a shift is not, so it is not promised in any one window. The worst window is the lowest coverage in a trailing 91-day window (13 weekly origins), dated by the last origin in it. It is the single worst stretch of one history, so it carries no bootstrap interval.
 
-**Fit time** is the median model time per origin times the 964 origins of the full schedule, on one desktop CPU (machine B in [docs/methods.md](docs/methods.md)); the median, so that time lost to other work or to the machine sleeping is not counted. The statistical models were fitted three at a time and each is given a third. LightGBM is the only model given the holiday calendar. N-HiTS is refitted every fourth origin and forecasts every origin from its latest weights. PatchTST and TimesFM are not built yet.
+**Fit time** is the median model time per origin times the 964 origins of the full schedule, on one desktop CPU (machine B in [docs/methods.md](docs/methods.md)); the median, so that time lost to other work or to the machine sleeping is not counted. The statistical models were fitted three at a time and each is given a third. LightGBM is the only model given the holiday calendar. The neural models are refitted on a schedule, N-HiTS every 4 and PatchTST every 13 origins, and each forecasts every origin from its latest weights. TimesFM is not built yet.
 
 **Reconciliation: ETS with MinT**
 
@@ -72,16 +80,19 @@ Inputs are illustrative and replaceable ([inputs/decision.toml](inputs/decision.
 |  | ETS + MinT | 448.8 [435.3, 461.9] | 65.79 [63.57, 68.52] | +0.03 [-0.11, +0.14] |
 |  | LightGBM, global | 449.3 [435.9, 462.0] | 65.76 [63.38, 68.94] | +0.00 [-0.57, +0.69] |
 |  | N-HiTS, refitted every 4 weeks | 433.3 [420.2, 446.1] | 81.92 [78.67, 86.42] | +16.16 [+14.65, +18.14] |
+|  | PatchTST, refitted every 13 weeks | 448.8 [435.2, 461.7] | 66.84 [64.23, 70.55] | +1.08 [+0.43, +2.13] |
 | 90% | Seasonal naive | 483.2 [469.1, 496.6] | 91.18 [88.92, 93.94] | +18.91 [+18.11, +19.57] |
 |  | ETS | 468.7 [455.0, 482.4] | 72.27 [70.05, 75.09] | reference |
 |  | ETS + MinT | 468.8 [454.9, 482.4] | 72.29 [70.11, 75.06] | +0.02 [-0.09, +0.10] |
 |  | LightGBM, global | 470.3 [456.7, 483.4] | 73.39 [70.86, 76.87] | +1.12 [-0.14, +2.43] |
 |  | N-HiTS, refitted every 4 weeks | 447.8 [434.4, 460.8] | 77.08 [74.04, 81.59] | +4.81 [+3.16, +6.85] |
+|  | PatchTST, refitted every 13 weeks | 470.8 [456.9, 484.2] | 74.36 [71.67, 78.20] | +2.09 [+0.93, +3.42] |
 | 95% | Seasonal naive | 504.9 [490.6, 518.6] | 104.42 [102.12, 107.23] | +21.43 [+20.24, +22.35] |
 |  | ETS | 485.1 [470.9, 499.1] | 82.99 [80.59, 85.93] | reference |
 |  | ETS + MinT | 485.2 [470.9, 499.2] | 83.01 [80.66, 85.89] | +0.02 [-0.08, +0.13] |
 |  | LightGBM, global | 499.2 [484.9, 513.3] | 95.45 [90.64, 102.00] | +12.46 [+8.44, +17.90] |
 |  | N-HiTS, refitted every 4 weeks | 461.9 [448.3, 475.1] | 77.85 [75.00, 82.16] | -5.14 [-6.92, -3.04] |
+|  | PatchTST, refitted every 13 weeks | 490.2 [475.9, 503.9] | 87.52 [84.67, 91.52] | +4.53 [+2.92, +6.22] |
 <!-- report:end -->
 
 ## What this does not do

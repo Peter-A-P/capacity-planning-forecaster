@@ -781,7 +781,7 @@ reported compute.
 
 ---
 
-## PatchTST: built, timed, not yet run
+## PatchTST
 
 Built 2026-09-15 through the same wrapper as N-HiTS (`headroom.models.neural.GlobalNeural`),
 so it is fitted, forecast and refitted identically: the same 112-day input, 1,000 training
@@ -790,13 +790,10 @@ Its architecture and learning rate (0.0001) are NeuralForecast's defaults: three
 layers, 16 heads, hidden size 128, patches of 16 days with a stride of 8, and reversible
 instance normalisation. Nothing was tuned.
 
-| Measured 2026-09-15 on machine B, nothing else computing | Seconds |
-|---|---:|
-| One fit at origin 482 (2017-03-27) | 1,356 |
-| One forecast from fitted weights | 0.07 |
+### The schedule, and what it cost
 
-A fit is about five times an N-HiTS fit (274 seconds at the median). That forces the
-schedule question again:
+A fit is about five times an N-HiTS fit (274 seconds at the median), which made the refit
+schedule a real choice rather than a default:
 
 | Refit every | Fits | Estimated run |
 |---|---:|---:|
@@ -804,8 +801,74 @@ schedule question again:
 | 13 origins | 75 | about 28 hours |
 | 16 origins | 61 | about 23 hours |
 
-Not yet decided; AutoARIMA ran first. The single fit's city CRPS at that origin, 103.0, is
-one fit and says nothing about the model (see the second-seed check above).
+**Every 13 origins was chosen** and run 2026-09-16 08:34 to 2026-09-17 17:26: 964 origins,
+75 fits, 32.87 hours wall clock. The estimate was 28.
+
+### Measured result: it ties ETS at the top, loses at the leaves
+
+`headroom score --models ETS,LightGBM,N-HiTS-refit4,PatchTST-refit13 --step 7`, 2026-09-17,
+on the shared 911-origin window. Coverage and width are of its own quantiles, with no
+conformal step.
+
+| Level | PatchTST CRPS | Skill against seasonal naive | PatchTST minus ETS | Coverage at 90% | Mean width |
+|---|---|---|---|---:|---:|
+| City | 131.95 [121.92, 145.72] | +0.201 [+0.171, +0.224] | -3.45 [-6.72, +2.48] | 0.896 [0.884, 0.909] | 778 [743, 817] |
+| Borough | 32.08 [30.13, 34.79] | +0.218 [+0.195, +0.235] | -0.31 [-0.89, +0.67] | 0.901 [0.892, 0.909] | 190 [183, 197] |
+| Dispatch area | 8.377 [8.072, 8.803] | +0.243 [+0.229, +0.252] | +0.103 [+0.041, +0.203] | 0.900 [0.895, 0.905] | 49.3 [48.2, 50.6] |
+
+And against LightGBM, the other model that ties ETS, paired on the same origins. This
+comparison is not one the score command prints, so it was computed separately with the
+same block bootstrap:
+
+| Level | PatchTST minus LightGBM | Origins where PatchTST is better |
+|---|---|---:|
+| City | -1.80 [-6.79, +2.28] | 50.5% |
+| Borough | +0.18 [-0.69, +0.92] | 48.3% |
+| Dispatch area | +0.096 [+0.005, +0.185] | 44.5% |
+
+What this says:
+
+* **Its city CRPS of 131.95 is the lowest in the project**, below LightGBM's 133.75 and
+  ETS's 135.40, and it cannot be claimed: the paired interval against ETS straddles zero,
+  and so does the one against LightGBM.
+* **It loses at the dispatch area**, +0.103 against ETS and +0.096 against LightGBM, both
+  intervals clear of zero, on 44.5 percent of origins against LightGBM.
+* **Its quantiles are the best calibrated of any model here**, 0.896 / 0.901 / 0.900
+  against 0.90, while being narrower than ETS at the city and borough. Contrast N-HiTS at
+  0.581 to 0.676. The two neural models fail in unrelated ways and should not be reported
+  as one finding; `docs/neural-verdict.md` treats them separately.
+
+### Fit time, and why the published figure is the conservative one
+
+The run was interrupted twice by other work on the machine, which is visible in the fit
+times and is exactly the failure this document already records twice under Compute. Three
+regimes:
+
+| Fits | Origins | Range | Mean |
+|---|---|---|---:|
+| Opening | 0 to 390 (31 fits) | 1,255 to 1,388 s | 1,327 s |
+| Contended | 403 to 637 (19 fits) | 1,279 to 3,030 s | about 2,450 s |
+| Quietest | 650 to 962 (25 fits) | 1,204 to 1,276 s | 1,229 s |
+
+The contention began at 19:58 on 2026-09-16, when a second editor and agent session
+started, and worsened at 07:55 the next morning when an unrelated training run began; it
+ended when both were stopped at 08:23, mid-fit, which is why the fit at origin 637 reads
+1,680 s.
+
+**The README reports 27.3 hours**, from the report command's rule: the median model time
+per origin times 964 origins. The median is the point of that rule. 56 of the 75 fits are
+clean, so the median fit of 1,325 s sits in a clean regime and the contaminated stretch
+cannot move the published number.
+
+It is nonetheless the conservative figure. The median lands in the opening regime, and the
+quietest 25 fits averaged 1,229 s, which would give **25.3 hours**. The two clean regimes
+differ by about 7 percent and the difference is not explained; the opening stretch
+overlapped other work in this repository. Rather than pick, the table keeps the mechanical
+median rule and this note records the spread. Either figure supports the same conclusion,
+so nothing in the verdict turns on it.
+
+Wall clock for the run, 32.87 hours, is not a measurement of anything and is not reported
+as one.
 
 ---
 

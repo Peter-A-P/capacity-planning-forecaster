@@ -1,6 +1,6 @@
 # State of the build
 
-**Last updated: 2026-09-16.** Read this first if you are picking the project up. It says
+**Last updated: 2026-09-17.** Read this first if you are picking the project up. It says
 what exists, what has been measured, what decision is open, and what to do next.
 
 `PLAN.md` is the design and takes precedence. `docs/methods.md` has every measured number
@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**238 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**248 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -31,7 +31,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
 | `test_hierarchy.py` | 14 | The summing matrix and coherence |
 | `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
-| `test_report.py` | 27 | README markers (refused if missing, idempotent), interval formatting, worst window |
+| `test_report.py` | 37 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
 
 ### Built and measured
 
@@ -47,7 +47,10 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | LightGBM | `headroom.models.boosting`, `headroom.conformal.predictive` | Done. 964 weekly origins, scored: ties ETS at every level |
 | CLI | `headroom.cli` | Done for what exists, including `boost` and `score` |
 
-### Not built yet
+### The models, and what is still missing
+
+The first entries are done and are here because the verdict on them is the point, not the
+code. What is genuinely not built starts at TimesFM.
 
 - **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
   scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
@@ -56,14 +59,14 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
   median is still behind ETS). Not the seed either: 20 refits with a second seed are no
   better on average (city -6.44 [-15.35, +2.38]) and still behind ETS at every level
   (city +23.85 [+13.76, +33.74]), though one fit's city CRPS can move by 56.
-- **PatchTST: built, not run.** `headroom neural --model PatchTST`, through the same
-  `GlobalNeural` wrapper as N-HiTS: NeuralForecast's architecture defaults and learning
-  rate, the same 112-day input and the same 1,000-step training budget. **One fit is
-  1,356 seconds** on an idle machine B, five times N-HiTS, so monthly refits would be
-  about 91 hours; every 13 origins about 28, every 16 about 23. Schedule not chosen yet
-  (`docs/methods.md`, PatchTST); this is the next long run to start. Needs
-  `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The neural tests skip
-  where NeuralForecast is not installed, which includes CI.
+- **PatchTST: done, and it is the interesting near-miss.** `docs/neural-verdict.md`.
+  Refitted every 13 origins, 75 fits, 964 origins, scored on 53 to 963: CRPS minus ETS
+  city -3.45 [-6.72, +2.48], borough -0.31 [-0.89, +0.67], area +0.103 [+0.041, +0.203].
+  So it **ties ETS at the city and borough and loses at the leaves**. Its city CRPS of
+  131.95 is the lowest in the project and cannot be claimed. Coverage 0.896 / 0.901 /
+  0.900 from its own quantiles, the best calibrated model here. About 27.3 hours of
+  fitting. Needs `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The
+  neural tests skip where NeuralForecast is not installed, which includes CI.
 - **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
   First check it installs under Python 3.13. Its pretraining postdates most origins, so
   it is scored separately on a clean window after its pretraining ends; read 2.7a before
@@ -94,6 +97,38 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---
+
+## Done: PatchTST, a tie at the top and a loss at the leaves
+
+**Run 2026-09-16 08:34 to 2026-09-17 17:26, scored 2026-09-17.** 964 origins, 75 fits,
+32.87 h wall clock against a 28 h estimate, because the machine was not idle for 19 of the
+75 fits. Full tables in `docs/methods.md` under "PatchTST", verdict in
+`docs/neural-verdict.md`.
+
+| Level | PatchTST minus ETS | PatchTST minus LightGBM | Coverage at 90% |
+|---|---|---|---|
+| City | -3.45 [-6.72, +2.48] | -1.80 [-6.79, +2.28] | 0.896 |
+| Borough | -0.31 [-0.89, +0.67] | +0.18 [-0.69, +0.92] | 0.901 |
+| Dispatch area | +0.103 [+0.041, +0.203] | +0.096 [+0.005, +0.185] | 0.900 |
+
+Three unrelated families tie at the top two levels and the cheapest wins at the leaves.
+The PatchTST against LightGBM comparison is not one `score` prints; it was computed
+separately with the same block bootstrap.
+
+**Two things to know before quoting the fit time.** The published 27.3 h comes from the
+report's median rule, which is robust to the contention (56 of 75 fits are clean, so the
+median sits in a clean regime). The quietest 25 fits imply 25.3 h, so the published figure
+is conservative by about 7 percent. The 32.87 h wall clock is not a measurement.
+
+**The report command had two bugs this run exposed**, both now fixed with tests: it
+carried a hardcoded "PatchTST | not built" row that contradicted the PatchTST results
+above it, and two notes that named models in prose instead of deriving them, so they went
+stale the moment a model was added. Both are now generated from the checkpoints actually
+reported.
+
+Commands: `uv run --extra neural headroom neural --model PatchTST --refit-every 13 --step 7
+--save-every 13`, then `uv run headroom report --statistical ETS,Theta,MSTL,AutoARIMA
+--boosting LightGBM --neural N-HiTS-refit4,PatchTST-refit13`.
 
 ## Done: AutoARIMA, beaten by ETS at five times the cost
 
