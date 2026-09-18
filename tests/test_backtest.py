@@ -82,6 +82,16 @@ def test_refits_fall_on_the_schedule_and_are_counted():
     assert sum(flags) == schedule.n_refits
 
 
+def test_a_forecast_uses_the_most_recent_refit_at_or_before_it():
+    schedule = _origins(refit_every=13)
+    flagged = [o.number for o in schedule if o.refit]
+    for origin in schedule:
+        expected = max(n for n in flagged if n <= origin.number)
+        assert schedule.refit_for(origin.number) == expected
+    with pytest.raises(ValueError, match="outside"):
+        schedule.refit_for(len(schedule))
+
+
 def test_refitting_at_every_origin_is_expressible():
     schedule = _origins(refit_every=1)
     assert all(o.refit for o in schedule)

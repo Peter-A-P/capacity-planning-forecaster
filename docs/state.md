@@ -1,6 +1,6 @@
 # State of the build
 
-**Last updated: 2026-09-13.** Read this first if you are picking the project up. It says
+**Last updated: 2026-09-18.** Read this first if you are picking the project up. It says
 what exists, what has been measured, what decision is open, and what to do next.
 
 `PLAN.md` is the design and takes precedence. `docs/methods.md` has every measured number
@@ -12,19 +12,28 @@ cost. This file is the working state, and it goes stale; the other three do not.
 ## Where the build is
 
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
-repository at rev. 5). Two-week build; this is day 2.
+repository at rev. 5). Two-week build; this is day 7.
 
-**142 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**277 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
 |---|---:|---|
-| `test_backtest.py` | 38 | Origins and look-ahead, seasonal naive, the runner, checkpointing |
+| `test_backtest.py` | 39 | Origins and look-ahead, refit schedule, seasonal naive, the runner, checkpointing |
+| `test_neural.py` | 10 | N-HiTS and PatchTST quantiles, forecasting between refits, determinism; skipped without the neural extra |
+| `test_foundation.py` | 13 | TimesFM's clean window, the grid it is stored on, and where the scorer finds its median; the two that need the weights are marked slow |
+| `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
+| `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
+| `test_reconcile.py` | 9 | MinT coherence for any input, equality with hierarchicalforecast, feedback rule |
+| `test_paths.py` | 11 | Every sample path coherent at every origin, the marginals deliberately not summing, the feedback rule |
+| `test_decide.py` | 10 | Critical ratio beats every staffing level by brute force, oracle costs nothing, the inputs table |
 | `test_score.py` | 34 | CRPS against the closed form, pinball, coverage, width, skill, block bootstrap |
 | `test_conformal.py` | 20 | The feedback rule, the conformal quantile, split, adaptive, aggregated |
 | `test_data.py` | 20 | The loader, the borough judgement call, checks, the calendar |
 | `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
 | `test_hierarchy.py` | 14 | The summing matrix and coherence |
+| `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
+| `test_report.py` | 42 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
 
 ### Built and measured
 
@@ -36,19 +45,67 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | Backtest | `headroom.backtest` | Done. 964 weekly origins, resumable checkpointing |
 | Baseline | `headroom.models.baselines` | Done. Seasonal naive with per-horizon empirical residual quantiles |
 | Conformal | `headroom.conformal` | Done. Split, adaptive (ACI), aggregated (AgACI) |
-| Statistical models | `headroom.models.stats` | **Wrapper built and tested; the backtest has not been run.** See the open decision |
-| CLI | `headroom.cli` | Done for what exists |
+| Statistical models | `headroom.models.stats` | Done. ETS, Theta, MSTL and AutoARIMA, 964 weekly origins each, all scored. ETS wins |
+| LightGBM | `headroom.models.boosting`, `headroom.conformal.predictive` | Done. 964 weekly origins, scored: ties ETS at every level |
+| CLI | `headroom.cli` | Done for what exists, including `boost` and `score` |
 
-### Not built yet
+### The models, and what is still missing
 
-- **Neural models** (N-HiTS, PatchTST). `PLAN.md` section 2.7. Week 2.
-- **Reconciliation** (MinT, probabilistic, coherence verified at every origin).
-  `PLAN.md` section 2.5. Week 2. The summing matrix it needs is already in
-  `headroom.hierarchy.spec` and tested.
-- **Decision layer** (newsvendor, staffing, realised cost against an oracle).
-  `PLAN.md` section 2.6. Week 2.
-- **Charts and the report command.** The README results tables are still empty and must
-  be filled by the report command, never by hand (`CLAUDE.md`).
+Every model named in `PLAN.md` section 1 is now built and scored, and so is the whole
+reconciliation. The first entries are here because the verdict on them is the point, not
+the code. What is genuinely not built is the charts, conformal on the reconciled forecasts,
+and the dashboard.
+
+- **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
+  scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
+  +1.98; coverage at 90 percent 0.58 to 0.68; about 18.3 hours of fitting. Not the refit
+  schedule (no trend with weeks since refit), and not calibration alone (a conformal
+  median is still behind ETS). Not the seed either: 20 refits with a second seed are no
+  better on average (city -6.44 [-15.35, +2.38]) and still behind ETS at every level
+  (city +23.85 [+13.76, +33.74]), though one fit's city CRPS can move by 56.
+- **PatchTST: done, and it is the interesting near-miss.** `docs/neural-verdict.md`.
+  Refitted every 13 origins, 75 fits, 964 origins, scored on 53 to 963: CRPS minus ETS
+  city -3.45 [-6.72, +2.48], borough -0.31 [-0.89, +0.67], area +0.103 [+0.041, +0.203].
+  So it **ties ETS at the city and borough and loses at the leaves**. Its city CRPS of
+  131.95 is the lowest in the project and cannot be claimed. Coverage 0.896 / 0.901 /
+  0.900 from its own quantiles, the best calibrated model here. About 27.3 hours of
+  fitting. Needs `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The
+  neural tests skip where NeuralForecast is not installed, which includes CI.
+- **TimesFM, zero-shot: done, and it is the one that did not lose.**
+  `docs/neural-verdict.md`. `PLAN.md` section 2.7a, `headroom zeroshot`,
+  `headroom.models.foundation`. **Read 2.7a before quoting any TimesFM number.** On the
+  clean window (133 origins, 2023-12-04 onward, every forecast day after the documented
+  pretraining data) it beats ETS at every level, city -24.34 [-29.84, -12.74], borough
+  -3.23, area -0.171, and **ties LightGBM**, city -6.85 [-12.37, +1.32]. 6.89 hours of
+  inference, nothing fitted. The catch: paired against LightGBM its lead is -10.45 at the
+  city on the 93 origins before the weights were published and +1.51 on the 40 after, which
+  is either the leak or a frozen model going stale, and 40 origins cannot say which.
+  Score it with `headroom score --from-day 2023-11-30`, cross-check with `--from-day
+  2025-09-15`. Its checkpoint holds its nine deciles; the median is the forecast and the
+  scored distribution is conformal, as LightGBM's is.
+- **Reconciliation: point and probabilistic both done.** `headroom reconcile --model ETS`
+  reports both from one pass, in about 7 seconds. Point MinT: coherence error 515 incidents
+  to 0; city CRPS -7.05 [-8.24, -4.80], borough -0.97 [-1.13, -0.69], areas unchanged.
+  **MinT paths**, the probabilistic one (`headroom.reconcile.paths`): every draw coherent
+  to 5e-12, city -6.33 [-8.09, -3.40], areas +0.170, and it is the only thing in the project
+  that brings ETS's coverage to nominal at all three levels (0.901 / 0.900 / 0.901 against
+  0.918 / 0.911 / 0.904). On LightGBM it is close to free: city **-8.42 [-10.40, -6.88]**,
+  the largest reconciliation gain here, narrower everywhere, calibration held. Because the
+  paths need only a median, the median-only models reconcile too, which was the gap this
+  entry used to record. Still to build: conformal on the reconciled forecasts.
+- **Decision layer: done.** `headroom decide`, inputs in `inputs/decision.toml`
+  (illustrative). At the cost-implied 80 percent, ETS costs 65.76 a day against seasonal
+  naive's 85.13; LightGBM ties ETS at 80 and costs 15 percent more at 95. N-HiTS costs
+  81.92 at 80 percent, 25 percent more than ETS.
+- **Report command: done 2026-09-15; charts not built.** `headroom report` scores every
+  finished checkpoint on origins 53 to 963, picks the best statistical model by CRPS skill
+  averaged over the levels (ETS +0.214, Theta +0.204, AutoARIMA +0.197, MSTL +0.098),
+  reconciles and staffs
+  from it, and writes the README tables between the report markers. About 15
+  minutes. Its numbers reproduce `score`, `reconcile` and `decide` exactly; `decide` now
+  shares its staffing helpers. Rerun it whenever a checkpoint changes. A model named in
+  `--zero-shot` gets its own windowed table instead of a row in the main one, because its
+  origins are not the main table's origins. The fan and coverage charts are still to build.
 - **Dashboard.** Deliberately held until project 01 builds the static decision-app pattern
   in its week 7 (Oct 19 to 25 2026), so 08 reuses it rather than inventing it. Peter's
   call, recorded in `PLAN.md`.
@@ -56,12 +113,176 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ---
 
-## The open decision: how much laptop time for the statistical models
+## Done: probabilistic reconciliation, and what coherence costs
 
-**Nothing is blocked on code. This needs Peter's answer.**
+**Built and measured 2026-09-18.** `headroom.reconcile.paths`, 11 tests in
+`tests/test_paths.py`. Each of the 52 error vectors in the window is added to the base
+forecast and put through the MinT projection, so every draw is coherent across all 37
+series at once. Base breach 514.8 incidents, every path coherent to 5.46e-12. It runs in
+7 seconds over 911 origins, which was the surprise: this was budgeted as the expensive
+piece and it is the cheapest thing in the project.
+
+Read `docs/methods.md` for the tables. The short version: on ETS it trades 2 percent of
+CRPS at the dispatch areas for the only nominal coverage at all three levels the project
+has produced; on LightGBM it is the largest reconciliation gain here at no cost to
+calibration; and in the rota it staffs slightly more, because a coherent area distribution
+has a wider upper tail than ETS's own.
+
+Two deliberate refusals, both tested. The paths are not floored at zero, because clipping
+breaks the coherence they exist for. And the marginal quantiles do not sum, which is
+correct: a test asserts they do not, so that nobody later "fixes" it.
+
+Command: `uv run headroom reconcile --model ETS --step 7`, and the same for any other
+finished checkpoint including the median-only ones.
+
+## Done: TimesFM, zero-shot, and the window that disagrees with itself
+
+**Run 2026-09-17 21:17 to 2026-09-18 04:16, scored 2026-09-18.** 964 origins, 6.95 h wall
+clock, nothing fitted. Full tables in `docs/methods.md` under "Measured result", verdict in
+`docs/neural-verdict.md`. On the clean window, 133 origins from 2023-12-04:
+
+| Level | TimesFM minus ETS | TimesFM minus LightGBM | Coverage at 90% |
+|---|---|---|---|
+| City | -24.34 [-29.84, -12.74] | -6.85 [-12.37, +1.32] | 0.895 |
+| Borough | -3.23 [-4.20, -1.43] | -0.49 [-1.43, +0.70] | 0.895 |
+| Dispatch area | -0.171 [-0.296, -0.040] | +0.021 [-0.044, +0.109] | 0.903 |
+
+A model trained on none of this data beats the model fitted to each series, and ties the
+global model trained on it. **Two things to know before quoting that.** LightGBM also beats
+ETS on this window, so part of what both gain is the conformal distribution tracking recent
+demand where ETS's own quantiles do not. And the lead against LightGBM is -10.45 at the
+city on the 93 origins before the weights were published and +1.51 on the 40 after, which
+is either undocumented overlap or a frozen model going stale against a weekly refit.
+
+**Three things this run added to the code**, each with tests: the report keeps a pretrained
+model out of the main table and gives it its own windowed table, because its origins are
+not that table's origins; a model reported that way says "own windows, below" and never
+"not built"; and no block-bootstrap interval is printed below 112 origins, four blocks,
+after the 40-origin window returned an interval that did not contain its own point
+estimate.
+
+Commands: `uv run --extra foundation headroom zeroshot --step 7 --save-every 10`, then
+`uv run headroom score --models TimesFM,ETS,LightGBM --from-day 2023-11-30`.
+
+## Done: PatchTST, a tie at the top and a loss at the leaves
+
+**Run 2026-09-16 08:34 to 2026-09-17 17:26, scored 2026-09-17.** 964 origins, 75 fits,
+32.87 h wall clock against a 28 h estimate, because the machine was not idle for 19 of the
+75 fits. Full tables in `docs/methods.md` under "PatchTST", verdict in
+`docs/neural-verdict.md`.
+
+| Level | PatchTST minus ETS | PatchTST minus LightGBM | Coverage at 90% |
+|---|---|---|---|
+| City | -3.45 [-6.72, +2.48] | -1.80 [-6.79, +2.28] | 0.896 |
+| Borough | -0.31 [-0.89, +0.67] | +0.18 [-0.69, +0.92] | 0.901 |
+| Dispatch area | +0.103 [+0.041, +0.203] | +0.096 [+0.005, +0.185] | 0.900 |
+
+Three unrelated families tie at the top two levels and the cheapest wins at the leaves.
+The PatchTST against LightGBM comparison is not one `score` prints; it was computed
+separately with the same block bootstrap.
+
+**Two things to know before quoting the fit time.** The published 27.3 h comes from the
+report's median rule, which is robust to the contention (56 of 75 fits are clean, so the
+median sits in a clean regime). The quietest 25 fits imply 25.3 h, so the published figure
+is conservative by about 7 percent. The 32.87 h wall clock is not a measurement.
+
+**The report command had two bugs this run exposed**, both now fixed with tests: it
+carried a hardcoded "PatchTST | not built" row that contradicted the PatchTST results
+above it, and two notes that named models in prose instead of deriving them, so they went
+stale the moment a model was added. Both are now generated from the checkpoints actually
+reported.
+
+Commands: `uv run --extra neural headroom neural --model PatchTST --refit-every 13 --step 7
+--save-every 13`, then `uv run headroom report --statistical ETS,Theta,MSTL,AutoARIMA
+--boosting LightGBM --neural N-HiTS-refit4,PatchTST-refit13`.
+
+## Done: AutoARIMA, beaten by ETS at five times the cost
+
+**Run 2026-09-15 09:13 to 2026-09-16 00:25, scored 2026-09-16.** 964 weekly origins in
+15.21 hours wall clock, 56 seconds an origin. Tables in `docs/methods.md` under
+"AutoARIMA: fifteen hours to confirm ETS". Paired CRPS difference against ETS on origins
+53 to 963:
+
+| Level | AutoARIMA minus ETS | AutoARIMA skill against seasonal naive | Coverage at 90% |
+|---|---|---|---|
+| City | +0.99 [-0.65, +3.56] | +0.174 [+0.155, +0.191] | 0.906 |
+| Borough | +0.96 [+0.71, +1.38] | +0.187 [+0.174, +0.199] | 0.902 |
+| Dispatch area | +0.254 [+0.212, +0.312] | +0.229 [+0.219, +0.237] | 0.899 |
+
+Positive is worse. A tie at the city, beaten outright below it, third of four statistical
+models by mean skill. It is the best calibrated of the four and has the narrowest city
+intervals, and it still loses on CRPS. **The README did not change**: the report shows
+only the best statistical model and ETS kept that row, so re-running it produced a
+byte-identical file. That is the correct outcome and worth knowing before anyone re-runs
+it expecting a diff.
+
+Saving every 25 origins instead of 5 cut checkpoint overhead from about 38 percent of wall
+clock to 1.3 percent. Use `--save-every 25` on any long statistical run.
+
+Commands: `uv run --extra stats headroom stats --models AutoARIMA --step 7 --save-every 25`,
+then `uv run headroom score --models ETS,Theta,MSTL,AutoARIMA,LightGBM,N-HiTS-refit4`.
+
+## Done: LightGBM, global, ties ETS
+
+**Run 2026-09-13 22:33 to 2026-09-14 01:12, scored 2026-09-14.** Tables in
+`docs/methods.md` under "LightGBM, global". Paired CRPS difference against ETS on origins
+53 to 963 (the first 53 have no calibration window for its distribution):
+
+| Level | LightGBM minus ETS | LightGBM skill against seasonal naive | Coverage at 90% |
+|---|---|---|---|
+| City | -1.65 [-6.81, +5.98] | +0.190 [+0.149, +0.223] | 0.897 |
+| Borough | -0.48 [-1.25, +0.62] | +0.222 [+0.196, +0.244] | 0.899 |
+| Dispatch area | +0.007 [-0.067, +0.098] | +0.252 [+0.239, +0.262] | 0.903 |
+
+A global model with holidays bought nothing measurable over ETS. That is the reference the
+neural models now have to beat to claim anything for deep learning.
+
+**Compute, corrected.** Fits were a steady 6.5 to 10.8 seconds from 23:45 onward; before
+that something else was using the cores. The clean cost is about 7 seconds a fit, about
+1.9 hours for a weekly run. The 29 seconds and 7.7 hours recorded on 2026-09-13 were a
+busy-machine measurement and are retracted in `docs/methods.md` and `PLAN.md`. **Lesson,
+again: run timings with nothing else open, including other Claude Code sessions.**
+
+Commands: `uv run headroom boost --step 7`, then
+`uv run headroom score --models ETS,Theta,MSTL,LightGBM`.
+
+## Done: weekly origins for ETS, Theta and MSTL
+
+**Run and scored, 2026-09-13.** 964 weekly origins, 13:20 to 21:07, 7.79 hours wall clock
+of which 4.80 hours was fitting and 3.0 hours was checkpoint writes. Full tables, with
+intervals, in `docs/methods.md` under "The statistical models". City, 90 percent nominal,
+each model's own quantiles with no conformal step:
+
+| Method | CRPS | Skill against seasonal naive | Coverage |
+|---|---|---|---|
+| Seasonal naive | 163.12 [152.58, 176.08] | 0 | 0.883 [0.870, 0.899] |
+| ETS | 133.92 [125.28, 143.53] | +0.179 [+0.164, +0.198] | 0.919 [0.908, 0.933] |
+| Theta | 135.89 [127.12, 145.79] | +0.167 [+0.151, +0.187] | 0.912 [0.901, 0.926] |
+| MSTL | 148.50 [137.26, 162.80] | +0.090 [+0.039, +0.130] | 0.781 [0.762, 0.799] |
+
+ETS and Theta beat the baseline by 17 to 25 percent at every level. **ETS is the best
+statistical model**: paired, it beats Theta by 1.3 to 1.5 percent of CRPS with intervals
+excluding zero at every level, so ETS is what later models are paired against. MSTL's
+median is 10 to 15 percent worse than ETS's and its intervals are 27 percent narrower,
+because StatsForecast adds the seasonal forecast to its quantiles as a fixed shift with no
+seasonal uncertainty (read from the source; coverage 0.68 one day ahead, 0.85 at 14).
+Ranking by MAE gives the same order as CRPS, so Rule C candidate 2 is not supported by
+these three models.
+
+The machine changed on 2026-09-13 (machine B in `docs/methods.md`: i5-10400F, 16 GB), and
+it fits three to four times faster than the laptop the estimates below were made on. That
+is why weekly was affordable. The estimates and reasoning below are kept as the record of
+how the decision was made.
+
+**Next for this area:**
+
+- AutoARIMA at weekly origins, about 17 hours alone on machine B. Fix the checkpoint
+  writes first (below), or it will spend hours rewriting its own file.
+- Done 2026-09-13: ETS against Theta paired, MSTL's intervals explained, MAE ranking
+  checked. Tables in `docs/methods.md`; the report command must reproduce them.
 
 The statistical models have to be back-tested over the record, and that is hours of CPU.
-The measured cost, on an **idle** machine, 37 series, 1,095-day window, 12 cores:
+The measured cost on machine A, **idle**, 37 series, 1,095-day window, 12 cores:
 
 | Model | Seconds per origin |
 |---|---:|
@@ -91,11 +312,16 @@ Whatever is chosen, run it **alone**. See the warning below.
 ### Run it with
 
     uv run headroom timings --step 28          # confirm the rate on an idle machine first
-    uv run headroom stats --models ETS,Theta,MSTL --step 28
+    uv run headroom stats --models ETS,Theta,MSTL --step 7
+    uv run headroom score --models ETS,Theta,MSTL --step 7    # about a minute
 
-It checkpoints to `backtest/out/` every five origins and resumes from where it stopped, so
-it is safe to interrupt. A rerun with the same options continues; a rerun with different
-options refuses rather than mixing two schedules into one table.
+It checkpoints to the output directory every five origins and resumes from where it
+stopped, so it is safe to interrupt. A rerun with the same options continues; a rerun with
+different options refuses rather than mixing two schedules into one table.
+
+**The output directory is `HEADROOM_OUT` if set, else `backtest/out/`.** On Peter's
+machine it is set to a folder outside OneDrive, because the repository lives in a synced
+folder and three weekly checkpoints are 2.2 GB. The data cache stays in `data/`.
 
 ### Warning: do not trust timings taken on a busy machine
 
@@ -198,8 +424,12 @@ anticipate, which is worth more than confirming it would have been.
 1. **Split conformal through the shift.** Evidence exists: worst window 0.582 against
    adaptive's 0.670. Real but smaller than the plan expected, because split conformal's
    rolling calibration window recalibrates it within about a year anyway.
-2. **Choosing the model by MAE.** Not yet testable; needs the statistical models.
-3. **A global neural model as the default.** Week 2.
+2. **Choosing the model by MAE.** Not supported by the statistical models: MAE and CRPS
+   rank ETS, Theta, MSTL identically at every level. Open for LightGBM and the neural
+   models.
+3. **A global neural model as the default.** Supported, strongly: N-HiTS loses to ETS at
+   every level at ten times the compute, and LightGBM shows learning across series was
+   never the gain. Now the leading candidate alongside finding 4 below.
 4. **New: adaptive conformal cannot widen past its calibration window.** Finding 1 above.
    This is the strongest candidate: it is measured, it is structural, it explains a
    negative result the plan expected to be positive, and the remedy is nameable. Written
@@ -210,19 +440,22 @@ anticipate, which is worth more than confirming it would have been.
 ## Reproducing what exists
 
     uv sync --extra stats
-    uv run headroom data build      # ~1 h first time; cached per year afterwards
+    uv run headroom data build      # ~1 h first time on machine A, 90 s on machine B
     uv run headroom baseline        # ~4 min
     uv run headroom conformal       # ~10 min
+    uv run headroom stats --step 7  # ~8 h on machine B
+    uv run headroom score --step 7  # ~1 min
 
 `uv run headroom --help` lists everything. Data lives in `data/` and backtest output in
-`backtest/out/`; both are gitignored and neither is ever committed.
+`HEADROOM_OUT` or `backtest/out/`; both are gitignored and neither is ever committed.
 
 ---
 
 ## Watch out for
 
-- **The README tables are filled by the report command, never by hand** (`CLAUDE.md`).
-  The command does not exist yet, so the tables are still empty and should stay that way.
+- **The README tables are filled by `headroom report`, never by hand** (`CLAUDE.md`).
+  Everything between the `report:start` and `report:end` markers is overwritten on every
+  run; edit the command, not the README.
 - **Every reported number carries a confidence interval.** `headroom.score.bootstrap`.
 - **State the conformal assumption wherever coverage is shown.** Adaptive conformal
   guarantees long-run average coverage, not per-period. Saying otherwise is the single
@@ -236,6 +469,19 @@ anticipate, which is worth more than confirming it would have been.
   by an indexer or virus scanner, which is transient and clears in milliseconds. The save
   now retries the rename five times with a 0.2 second pause and only then gives up, because
   an unhandled one would end a nine-hour run. If it recurs, that retry is where to look.
+- **Checkpoint saves are quadratic in the run's length.** Each save rewrites the whole
+  compressed file, which reaches about 740 MB per model at 964 origins, so the weekly run
+  spent 3.0 of its 7.79 hours saving. Harmless for correctness. Fix before AutoARIMA by
+  writing each batch of origins to its own file. The comment in
+  `headroom.backtest.store.open_checkpoint` that calls these files "a few megabytes" is
+  from before weekly runs and is wrong at this size.
+- **Twelve worker processes need a large Windows paging file.** With the default
+  system-managed size, workers failed to start with "the paging file is too small". It is
+  now a fixed 32 to 48 GB on machine B.
+- **The refit schedule, resolved 2026-09-14.** The statistical models and LightGBM refit
+  at every origin and ignore the flag; N-HiTS refits on it (`headroom neural`), and
+  `headroom.backtest.origins` now says exactly that. The neural model carries the
+  handicap, never the cheap ones.
 - **The plan repository** (`../ml-portfolio-plan`) has `STATUS.md`, which is edited by
   several sessions at once. Check `git status` there before committing, and commit only
   the files you changed.

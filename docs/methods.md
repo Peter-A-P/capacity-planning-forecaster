@@ -231,6 +231,705 @@ have to fix.
 
 ---
 
+## The statistical models
+
+ETS, Theta and MSTL through StatsForecast, each giving its own prediction quantiles, at
+the same 964 weekly origins as the baseline, on the same 1,095-day trailing window, with
+every model refitted at every origin. AutoARIMA was deferred out of that batched run for
+cost and run alone afterwards; its result is below.
+
+### Measured result
+
+`headroom score --models ETS,Theta,MSTL --step 7`, 2026-09-13. Seasonal naive is rerun on
+the same origins inside the command, so skill is paired, and it reproduced the baseline
+table above exactly on a different machine. Every interval is a 95 percent moving block
+bootstrap over origins (block 28, 2,000 resamples, seed 0); skill intervals resample both
+methods on the same drawn origins.
+
+Coverage and width are at 90 percent nominal, of **each model's own quantiles, with no
+conformal step**. Nothing guarantees these coverages; they are what the model's
+distributional assumptions delivered on this record.
+
+City:
+
+| Method | CRPS | Skill against seasonal naive | Coverage at 90% | Mean width |
+|---|---|---|---|---|
+| Seasonal naive | 163.12 [152.58, 176.08] | 0 | 0.883 [0.870, 0.899] | 885.6 [861.5, 912.1] |
+| ETS | 133.92 [125.28, 143.53] | +0.179 [+0.164, +0.198] | 0.919 [0.908, 0.933] | 835.8 [806.3, 866.9] |
+| Theta | 135.89 [127.12, 145.79] | +0.167 [+0.151, +0.187] | 0.912 [0.901, 0.926] | 834.4 [801.7, 867.6] |
+| MSTL | 148.50 [137.26, 162.80] | +0.090 [+0.039, +0.130] | 0.781 [0.762, 0.799] | 613.2 [590.5, 640.6] |
+
+Borough:
+
+| Method | CRPS | Skill against seasonal naive | Coverage at 90% | Mean width |
+|---|---|---|---|---|
+| Seasonal naive | 40.62 [38.62, 43.19] | 0 | 0.890 [0.881, 0.899] | 222.5 [217.2, 227.9] |
+| ETS | 32.09 [30.38, 34.15] | +0.210 [+0.201, +0.222] | 0.911 [0.902, 0.921] | 192.8 [186.5, 199.5] |
+| Theta | 32.51 [30.77, 34.60] | +0.200 [+0.188, +0.213] | 0.899 [0.890, 0.909] | 190.3 [183.2, 198.1] |
+| MSTL | 36.50 [34.38, 39.26] | +0.101 [+0.063, +0.130] | 0.738 [0.724, 0.751] | 138.8 [133.7, 144.8] |
+
+Dispatch area:
+
+| Method | CRPS | Skill against seasonal naive | Coverage at 90% | Mean width |
+|---|---|---|---|---|
+| Seasonal naive | 10.99 [10.67, 11.39] | 0 | 0.896 [0.891, 0.901] | 61.6 [60.5, 62.7] |
+| ETS | 8.21 [7.94, 8.58] | +0.253 [+0.246, +0.258] | 0.904 [0.897, 0.910] | 48.1 [47.0, 49.4] |
+| Theta | 8.32 [8.04, 8.69] | +0.243 [+0.236, +0.249] | 0.890 [0.884, 0.896] | 46.9 [45.6, 48.3] |
+| MSTL | 9.83 [9.48, 10.28] | +0.106 [+0.088, +0.120] | 0.704 [0.696, 0.711] | 34.7 [33.7, 35.8] |
+
+What this says:
+
+* **ETS and Theta beat seasonal naive clearly at every level**, by 17 to 25 percent in
+  CRPS, with intervals nowhere near zero. Skill grows down the hierarchy, from about 0.17
+  at the city to 0.25 at the dispatch area, where series are noisier and a naive copy of
+  last week carries more of that noise forward.
+* **ETS and Theta slightly over-cover at the city** (0.919 and 0.912), which with CRPS
+  this much better means their intervals are reasonable rather than inflated.
+
+### ETS is the best statistical model, by a small margin that is real
+
+The skill intervals above overlap, but that is the wrong test: the two models were scored
+on the same origins, and origin-to-origin variation dwarfs the difference between them.
+The paired CRPS difference, Theta minus ETS, bootstrapped over origins as above:
+
+| Level | Theta minus ETS | Share of ETS CRPS | Origins where ETS is better |
+|---|---|---:|---:|
+| City | +1.97 [+1.37, +2.63] | 1.5% | 60.7% |
+| Borough | +0.42 [+0.30, +0.55] | 1.3% | 63.9% |
+| Dispatch area | +0.106 [+0.090, +0.123] | 1.3% | 78.5% |
+
+Every interval excludes zero. **ETS is the best statistical model at every level**, and it
+is the model every later comparison (LightGBM, the neural models, TimesFM) is paired
+against.
+
+### AutoARIMA: fifteen hours to confirm ETS
+
+AutoARIMA is the most expensive statistical baseline and the one most likely, a priori, to
+take the top row off ETS. It was held out of the batched run for cost and run alone on
+2026-09-15, weekly origins, the same 1,095-day trailing window, refitted at every origin:
+`headroom stats --models AutoARIMA --step 7 --save-every 25`. **964 origins in 15.21 hours
+wall clock**, 55 to 57 seconds an origin with no trend across the record.
+
+Scored paired against the others on 2026-09-16. These numbers are on the **911 origins from
+2009-01-05 that every model now shares**, the window that starts late enough for LightGBM's
+conformal distribution and MinT's covariance to exist. The tables above predate that window
+and score more origins, which is why ETS's CRPS differs a little between them; within each
+table the comparison is paired and internally consistent.
+
+| Level | ETS CRPS | AutoARIMA CRPS | AutoARIMA minus ETS, paired | AutoARIMA coverage at 90% | Mean width |
+|---|---|---|---|---:|---:|
+| City | 135.40 [126.62, 144.61] | 136.39 [127.84, 146.46] | +0.99 [-0.65, +3.56] | 0.906 [0.895, 0.921] | 794 [760, 834] |
+| Borough | 32.39 [30.67, 34.36] | 33.35 [31.61, 35.55] | +0.96 [+0.71, +1.38] | 0.902 [0.893, 0.912] | 193 [186, 202] |
+| Dispatch area | 8.274 [7.991, 8.623] | 8.527 [8.227, 8.922] | +0.254 [+0.212, +0.312] | 0.899 [0.893, 0.906] | 49.3 [48.0, 50.7] |
+
+Positive means AutoARIMA is worse. What this says:
+
+* **AutoARIMA does not beat ETS anywhere.** At the city the paired interval straddles zero,
+  so that level is a tie. At the borough and the dispatch area the interval is clear of
+  zero and AutoARIMA is beaten outright. By mean CRPS skill it ranks **third of the four**
+  statistical models, behind ETS (+0.214) and Theta (+0.204) at +0.197, ahead only of MSTL.
+* **It is the best calibrated of the four**, at 0.906, 0.902 and 0.899 against a 0.90
+  target, closer than ETS at every level, and its city intervals are the narrowest of the
+  statistical models at 794 against ETS's 842. That is a real merit and it still is not
+  enough: better-shaped intervals around a slightly worse median lose on CRPS.
+* **The cost is the point.** 56 seconds an origin against ETS's 10.8 standalone, about five
+  times, for a result that moves nothing. This is the second entry in the project's
+  rejected column, and unlike the neural verdict it is a negative result about a model
+  that behaved perfectly well.
+
+One useful by-product: at `--save-every 25` the checkpoint overhead was **0.20 hours out of
+15.21 wall clock, about 1.3 percent**, against the roughly 38 percent the three-model run
+paid at `--save-every 5`. The quadratic rewrite cost recorded under Compute below is real
+but can be bought off with the save interval; it does not need the per-batch file format
+until a run is much longer than this one.
+
+### MSTL: both its median and its spread are worse, and the spread is structural
+
+Against ETS on the same origins, MSTL's median has **10 to 15 percent more absolute
+error** (1.10 at the city, 1.11 at the borough, 1.15 at the dispatch area) and its 90
+percent intervals are **27 to 28 percent narrower**. So the undercoverage is not a good
+median with a bad spread; both are worse, and the narrow spread is the larger failure.
+
+The cause of the spread, read from StatsForecast 2.1.1 (`statsforecast/models.py`,
+`MSTL.forecast`): MSTL fits its trend forecaster, AutoETS with no seasonal component, to
+the seasonally adjusted series (trend plus remainder), takes that model's prediction
+intervals, and then adds the seasonal forecast to every quantile as a fixed shift. **No
+uncertainty in the weekly or annual seasonal components reaches the interval.**
+
+The coverage pattern by horizon agrees with that reading. At the city, MSTL's 90 percent
+coverage is 0.68 one day ahead and rises steadily to 0.85 at fourteen days, while ETS
+stays between 0.89 and 0.95 throughout. The missing seasonal variance is a roughly fixed
+amount at every step; it matters most one day ahead, where the trend model's own interval
+is narrowest, and is partly masked at longer horizons as that interval grows.
+
+MSTL is kept in the tables as the model whose intervals should not be trusted without a
+conformal step, not dropped.
+
+### Choosing by MAE would not have misled here
+
+`PLAN.md` section 9, Rule C candidate 2, expected the model with the lowest absolute
+error of the median to differ from the one with the lowest CRPS on at least one level. On
+these three models it does not: ETS, then Theta, then MSTL, by both scores at every level.
+
+| Level | ETS | Theta | MSTL |
+|---|---|---|---|
+| City | 184.0 [173.0, 195.2] | 186.2 [175.1, 197.4] | 201.8 [188.1, 218.5] |
+| Borough | 44.43 [42.30, 46.89] | 44.82 [42.64, 47.22] | 49.45 [46.86, 52.72] |
+| Dispatch area | 11.51 [11.15, 11.96] | 11.63 [11.27, 12.07] | 13.29 [12.86, 13.84] |
+
+Mean absolute error of the median, with block-bootstrap intervals. The candidate is not
+supported by the statistical models. It stays open for the models still to come, where a
+point-accurate model with poorly calibrated intervals is more likely.
+
+Produced 2026-09-13 by a one-off analysis over the scored checkpoints. The report command
+has to reproduce these tables before any of them reaches the README.
+
+---
+
+## LightGBM, global
+
+`PLAN.md` section 2.7b. Built 2026-09-13 in `headroom.models.boosting`; run over all 964
+weekly origins overnight 2026-09-13 to 14.
+
+### Measured result: a tie with ETS
+
+`headroom score --models ETS,Theta,MSTL,LightGBM`, 2026-09-14. Because LightGBM's
+distribution needs a full calibration window, **every row here is scored on origins 53 to
+963** (2009-01-05 to 2026-06-15), so the baseline and ETS numbers differ slightly from the
+all-origin tables above. Intervals as above: 95 percent moving block bootstrap, paired
+where a difference is shown.
+
+| Level | Method | CRPS | Skill against seasonal naive | Minus ETS, paired | Coverage at 90% | Mean width |
+|---|---|---|---|---|---|---|
+| City | Seasonal naive | 165.12 [154.40, 177.73] | 0 | | 0.882 [0.868, 0.898] | 892.5 [869.5, 919.6] |
+| City | ETS | 135.40 [126.62, 144.61] | +0.180 [+0.165, +0.199] | 0 | 0.918 [0.907, 0.933] | 841.7 [811.9, 872.7] |
+| City | LightGBM | 133.75 [123.13, 148.35] | +0.190 [+0.149, +0.223] | -1.65 [-6.81, +5.98] | 0.897 [0.882, 0.913] | 839.0 [771.3, 936.1] |
+| Borough | Seasonal naive | 41.03 [38.94, 43.51] | 0 | | 0.889 [0.880, 0.899] | 224.1 [219.1, 229.3] |
+| Borough | ETS | 32.39 [30.67, 34.36] | +0.211 [+0.201, +0.223] | 0 | 0.911 [0.902, 0.921] | 194.2 [188.1, 201.2] |
+| Borough | LightGBM | 31.91 [29.99, 34.58] | +0.222 [+0.196, +0.244] | -0.48 [-1.25, +0.62] | 0.899 [0.888, 0.911] | 199.7 [186.7, 218.1] |
+| Dispatch area | Seasonal naive | 11.06 [10.74, 11.45] | 0 | | 0.896 [0.890, 0.901] | 62.0 [60.9, 63.1] |
+| Dispatch area | ETS | 8.27 [7.99, 8.62] | +0.252 [+0.246, +0.258] | 0 | 0.904 [0.897, 0.910] | 48.4 [47.3, 49.8] |
+| Dispatch area | LightGBM | 8.28 [7.98, 8.67] | +0.252 [+0.239, +0.262] | +0.007 [-0.067, +0.098] | 0.903 [0.896, 0.910] | 51.1 [49.2, 53.7] |
+
+Theta and MSTL on the same origins are within 0.02 of their all-origin skill and keep the
+same order; `headroom score` prints them.
+
+What this says:
+
+* **A global model with holidays bought nothing measurable over ETS.** Every paired
+  difference interval contains zero, at every level. The point estimates lean slightly to
+  LightGBM at the city and borough and not at all at the dispatch area, and the intervals
+  are several times wider than the leans. This is with the one advantage no other model
+  had, the holiday calendar of the day being forecast.
+* **Its intervals are wider than ETS's at the city** (the width interval runs from 771 to
+  936 against ETS's 812 to 873), as a distribution built from its own past errors carries
+  every large miss in its window forward for a year. Its coverage sits at nominal at every level
+  (0.897 to 0.903) where ETS over-covers at the city; that is the conformal construction
+  doing its job, not the booster.
+* **For the neural verdict this is the useful half.** If N-HiTS or PatchTST beat ETS, the
+  gain cannot be put down to learning across series or to holidays, because a global
+  model with both did not get it. If they tie, the plan's Rule C candidate 3 is supported
+  twice over.
+
+### What it sees, and the one advantage it has
+
+One model across all 37 series, refitted at every origin on the same 1,095-day trailing
+window. Each row is a series, an anchor day inside the window and a horizon step from 1
+to 14; the target is the value that many days after the anchor, divided by the series'
+mean over the window.
+
+| Feature | Read at |
+|---|---|
+| Horizon step, series, hierarchy level | Constant per row |
+| Four most recent same-weekday values for the target day | At or before the anchor |
+| Values on the anchor day and 1, 6 and 13 days before it | At or before the anchor |
+| Means over the last 7, 28 and 91 days | Ending at the anchor |
+| Day of week, day of year, US federal holiday, observed holiday | **The target day** |
+
+The calendar of the target day is known in advance and is not demand, so the backtest's
+guarantee holds: nothing after the origin is visible. `tests/test_boosting.py` corrupts
+every value after an anchor, for every horizon step, and asserts no feature changes.
+
+**It is the only model given holidays.** Any skill it has over ETS may owe part of its
+size to that, and every table that reports it says so. No feature names the year.
+
+Settings are fixed in the module and were not tuned on this backtest: an absolute-error
+objective (so it forecasts a median), learning rate 0.05, 63 leaves, at least 100 rows
+per leaf, 90 percent of features per tree, 400 rounds, seed 0.
+
+### Its distribution comes from its own past errors
+
+A model that forecasts a median has no quantile grid to score CRPS on. Its distribution
+at an origin is the forecast plus the order statistics of its own signed errors at the
+same node and horizon step over the previous 52 origins whose outcomes were known,
+`headroom.conformal.predictive`. The window, the two-origin feedback rule and the
+order-statistic convention are exactly those of the conformal intervals, so no new
+machinery enters the comparison. The assumption is exchangeability, which does not hold;
+coverage is measured, not guaranteed.
+
+Two costs, both stated wherever LightGBM is reported. The first 53 origins (2007-12-31 to
+2008-12-29) have no full window, so **every model is scored on origins 53 to 963 whenever
+LightGBM is in the table**, and those tables differ slightly from the all-origin tables
+above. And, like adaptive conformal, it cannot be wider than the widest error in its
+window, so the March 2020 ceiling applies to it too.
+
+Checked end to end before the run by giving the scorer ETS's medians in place of
+LightGBM's: the command reproduced the statistical tables above exactly when LightGBM was
+absent, and with it the baseline moved to its origins-53-onward values (city CRPS 165.12)
+as it should.
+
+### Why not MLForecast
+
+Planned, not used. A direct 14-day model needs the holiday flag of a different day for
+each horizon step, and the look-ahead test needs to see every feature of a row. A feature
+builder of about sixty lines does both visibly; a wrapper does them somewhere inside.
+
+### Cost: about 7 seconds a fit, and a busy-machine measurement retracted
+
+**Measured over the run itself:** from origin 250 onward (23:45 to 01:12, machine idle)
+every fit took between 6.5 and 10.8 seconds, median about 7.3. Before 23:45 the medians
+per fifty origins were 10 to 24 seconds with minimums still near 7, which is the signature
+of contention rather than of the data: something else was using the cores for the first
+hour of the run. The run's recorded total, **2.65 hours**, includes that contention and
+is not a clean measurement of the model. The clean cost is **about 7 seconds a fit, or
+roughly 1.9 hours for 964 weekly origins**.
+
+**Retracted:** the figures this section gave on 2026-09-13, 28.7 seconds a fit on six
+threads, 34.1 on the default and 130.2 on twelve, and a projected 7.7 hours. They were
+taken in the evening while other work shared the machine, which is exactly what "A timing
+taken on a busy machine is not a measurement" below warns against. The comparison between
+thread counts therefore says nothing reliable. Six threads stays the setting because it
+is the physical core count and gave identical forecasts; whether it is faster than twelve
+on an idle machine has not been measured.
+
+Histogram binning (`max_bin` 63) changed the forecasts, so it is not a speed setting and
+was not used. That observation does not depend on timing and stands.
+
+---
+
+## Reconciliation: MinT on ETS
+
+`PLAN.md` section 2.5. Built and measured 2026-09-14 in `headroom.reconcile.mint`;
+`headroom reconcile --model ETS`.
+
+### What is reconciled, and with what
+
+ETS forecasts each of the 37 series on its own, so its medians do not sum: at the worst
+origin and step, the city's median missed the sum of its dispatch areas' medians by **515
+incidents**. MinT replaces the base medians with the coherent set nearest to them in the
+metric of their error covariance ``W``, and each node's whole quantile forecast moves by
+the amount its median moved, so the spread is still ETS's own.
+
+``W`` is the Schafer and Strimmer shrinkage of the covariance of **ETS's own out-of-sample
+errors at the same horizon step over the previous 52 origins**, under the conformal
+feedback rule. The textbook uses in-sample one-step residuals; the checkpoints hold
+forecasts rather than fits, and a fourteen-day covariance is better estimated from
+fourteen-day errors. The shrinkage arithmetic matches hierarchicalforecast's `mint_shrink`
+to about 1e-8 (`tests/test_reconcile.py` holds it to 1e-6); three other common variants of
+the estimator differ from the library by up to 0.3 in ``W``, which is why the match was
+tested rather than assumed. Like LightGBM's distribution, it needs a full window, so the
+numbers below are on origins 53 to 963.
+
+### Measured result: better at the top, no cost at the leaves
+
+| Level | ETS CRPS | ETS + MinT CRPS | Paired change | Coverage at 90%, before and after |
+|---|---|---|---|---|
+| City | 135.40 [126.62, 144.61] | 128.35 [119.91, 139.12] | **-7.05 [-8.24, -4.80]** | 0.918, 0.932 |
+| Borough | 32.39 [30.67, 34.36] | 31.42 [29.72, 33.56] | **-0.97 [-1.13, -0.69]** | 0.911, 0.919 |
+| Dispatch area | 8.274 [7.991, 8.623] | 8.281 [8.006, 8.620] | +0.007 [-0.009, +0.019] | 0.904, 0.904 |
+
+* **Coherence error after MinT: 0.** Every reconciled median at every origin and step sums
+  exactly, against a largest breach of 515 incidents before.
+* **Reconciling improved the city by 5.2 percent and the boroughs by 3.0 percent**, both
+  intervals clear of zero, and left the dispatch areas unchanged. The aggregates borrow
+  from the leaves' information and the leaves lose nothing, which is the result MinT is
+  meant to deliver and not one it always does.
+* **Coverage rose at the city and borough** with identical widths, because the same spread
+  now sits around better medians. At the city that pushes ETS further above nominal
+  (0.932), so its intervals are now wider than they need to be there; the conformal step
+  is where that would be corrected.
+* The shrinkage intensity had a median of 0.27 (range 0.13 to 0.54): the sample covariance
+  of a year of errors needed real shrinking but was far from useless.
+* The whole reconciliation, 911 origins by 14 steps, took 5 seconds.
+
+### Probabilistic reconciliation: every draw coherent, measured 2026-09-18
+
+`headroom.reconcile.paths`. The section above reconciles the median and shifts each node's
+quantiles with it, which makes the medians coherent and says nothing about the rest of the
+distribution. This makes the distribution itself out of coherent pieces: each of the 52
+error vectors in the window is a vector over all 37 nodes at once, so adding it to the base
+forecast gives an incoherent future, and putting that through the same projection ``S G``
+gives a coherent one. The distribution is the empirical distribution of those 52 paths.
+
+**Coherence, which is the claim.** The base forecasts breach the summing constraints by up
+to **514.8 incidents**. Every path, at every origin and horizon step, is coherent to
+**5.46e-12**. That is the `PLAN.md` deliverable of coherence verified numerically at every
+origin, now over the whole distribution rather than its median.
+
+**What it costs and what it buys, on ETS.** 911 origins, paired against unreconciled ETS:
+
+| Level | MinT: change in CRPS | MinT paths: change in CRPS | ETS coverage | MinT | MinT paths |
+|---|---|---|---|---|---|
+| City | -7.05 [-8.24, -4.80] | -6.33 [-8.09, -3.40] | 0.918 | 0.932 | **0.901** |
+| Borough | -0.97 [-1.13, -0.69] | -0.53 [-0.77, -0.12] | 0.911 | 0.919 | **0.900** |
+| Dispatch area | +0.007 [-0.009, +0.019] | +0.170 [+0.154, +0.190] | 0.904 | 0.904 | 0.901 |
+
+The two reconciliations buy about the same CRPS at the city. They differ in where the
+spread comes from, and that is the whole difference: shifting keeps ETS's own quantiles,
+which over-cover, and reconciling the distribution replaces them with realised errors, which
+do not. **Probabilistic reconciliation is the only thing in this project that brings ETS's
+coverage to nominal at all three levels at once.** It pays for that at the dispatch areas,
+where it is 2 percent worse on CRPS than leaving the spread alone.
+
+**On LightGBM it is close to free.** A model whose base distribution is already conformal
+has nothing to lose from having its spread replaced by realised errors, and the result is
+the largest reconciliation gain in the project:
+
+| Level | Change in CRPS | Coverage before | Coverage after | Mean width before | after |
+|---|---|---|---|---|---|
+| City | **-8.42 [-10.40, -6.88]** | 0.897 | 0.897 | 839 | 786 |
+| Borough | -0.98 [-1.15, -0.83] | 0.899 | 0.897 | 200 | 192 |
+| Dispatch area | +0.014 [+0.007, +0.024] | 0.903 | 0.900 | 51.1 | 50.7 |
+
+Better at the top two levels, unchanged at the leaves, narrower everywhere, calibration
+held. This also closes a gap the earlier section recorded: the paths need only a median, so
+a median-only model is reconciled the same way as any other.
+
+**In the rota it costs a little.** Staffing from the coherent distribution at the
+cost-implied 80 percent costs 66.53 a day against plain ETS's 65.76, and at 95 percent
+94.88 against 82.99. The coherent distribution's upper tail at a dispatch area is wider
+than ETS's own, so it staffs more, and at a high service level that is paid for in idle
+units. Better calibrated is not the same as cheaper, and the decision table is where that
+shows.
+
+**Two things it deliberately does not do.** It does not floor the paths at zero: clipping
+breaks the coherence the paths exist for, so they are left alone and the cost is measured
+instead. 0.0013 percent of ETS's path values fall below zero and none of LightGBM's do.
+And its marginal quantiles do not sum, which is correct rather than a defect: the boroughs
+do not have their bad days together, so the city's 90th percentile is below the sum of
+theirs. `tests/test_paths.py` asserts that they do not sum, so that nobody later "fixes"
+it into something false about any real hierarchy.
+
+### What it does not do yet
+
+Conformal on the reconciled forecasts is not built. The paths already take their spread
+from realised out-of-sample errors, so what is left is the narrower question of whether an
+adaptive step on top of them adds anything, rather than the original one of where any
+spread comes from at all.
+
+---
+
+## The decision layer: staffing, priced against an oracle
+
+`PLAN.md` section 2.6. Built and measured 2026-09-14 in `headroom.decide.newsvendor`;
+`headroom decide`.
+
+### The rule and the inputs
+
+Each of the 31 dispatch areas is staffed for each of the fourteen days ahead. Staffing to
+the demand quantile at the **critical ratio** ``cost_under / (cost_under + cost_over)``
+minimises expected cost; demand is converted to whole units by rounding up. The oracle
+staffs exactly what each day needed and costs nothing, so a method's **realised cost** is
+the cost of its mistakes. `tests/test_decide.py` checks by brute force on a skewed fixture
+that no other staffing level has lower expected cost, for three cost ratios.
+
+The inputs are a table, `inputs/decision.toml`, and **every value in it is illustrative**:
+10 incidents per staffed unit per day, a spare unit-day costing 1 and a missing one 4, so
+the costs imply the 80th percentile. They come from no emergency service or published
+standard. The comparison between methods is the result; the absolute costs are not.
+
+### Measured result
+
+Origins 53 to 963 for every method, so the reconciled and LightGBM rows are paired with
+the rest. Cost per day summed over the 31 areas, in cost units; the oracle needed 409.3
+units a day.
+
+N-HiTS was added once its run finished (2026-09-15): at 80, 90 and 95 percent it costs
+81.92, 77.08 and 77.85 a day, minus ETS +16.16 [+14.65, +18.14], +4.81 [+3.16, +6.85] and
+-5.14 [-6.92, -3.04]. The last is not a win; `docs/neural-verdict.md` explains why its
+nominal 95 percent staffs like ETS's 87th.
+
+| Service level | Method | Cost per day | Units per day | Minus ETS, paired |
+|---|---|---|---:|---|
+| **80%, implied by the costs** | Seasonal naive | 85.13 [82.74, 87.98] | 457.6 | +19.37 [+18.84, +19.88] |
+| | ETS | 65.76 [63.48, 68.60] | 448.8 | 0 |
+| | ETS + MinT | 65.79 [63.57, 68.52] | 448.8 | +0.03 [-0.11, +0.14] |
+| | LightGBM | 65.76 [63.38, 68.94] | 449.3 | -0.00 [-0.57, +0.69] |
+| 90% | Seasonal naive | 91.18 [88.92, 93.94] | 483.2 | +18.91 [+18.11, +19.57] |
+| | ETS | 72.27 [70.05, 75.09] | 468.7 | 0 |
+| | ETS + MinT | 72.29 [70.11, 75.06] | 468.8 | +0.02 [-0.09, +0.10] |
+| | LightGBM | 73.39 [70.86, 76.87] | 470.3 | +1.12 [-0.14, +2.43] |
+| 95% | Seasonal naive | 104.42 [102.12, 107.23] | 504.9 | +21.43 [+20.24, +22.35] |
+| | ETS | 82.99 [80.59, 85.93] | 485.1 | 0 |
+| | ETS + MinT | 83.01 [80.66, 85.89] | 485.2 | +0.02 [-0.08, +0.13] |
+| | LightGBM | 95.45 [90.64, 102.00] | 499.2 | +12.46 [+8.44, +17.90] |
+
+* **Staffing from ETS instead of seasonal naive cuts the cost of mistakes by 23 percent**
+  at the level the costs imply, and by about a fifth at every level.
+* **Every method is cheapest at the level the costs imply.** Staffing ETS to 95 percent
+  instead of 80 costs 26 percent more: the shortages it avoids are worth less than the
+  idle units it adds. The newsvendor result holds on the real record, not only on the
+  fixture.
+* **The decision layer separates two models CRPS could not.** LightGBM tied ETS on CRPS at
+  every level, and ties it here at 80 percent. At 95 percent it costs 12.46 more per day,
+  15 percent, because the upper tail of its conformal distribution is wider: it staffs 14
+  more units a day for the same demand. A planner who staffs to a high service level
+  would pay for that tail every day; the CRPS table averages it away.
+* **Reconciliation changes nothing at the areas,** matching its CRPS result: MinT moved the
+  city and boroughs, and staffing is set at the leaves.
+
+Staffing is set per area and the city's total is the sum of the areas' units, so the rota
+is coherent by construction whatever the forecasts were.
+
+---
+
+## N-HiTS
+
+`PLAN.md` section 2.7. Built 2026-09-14 in `headroom.models.neural`; run over all 964
+weekly origins with monthly refits, 2026-09-14 08:07 to 2026-09-15 06:37.
+
+### Measured result: N-HiTS loses to ETS at every level
+
+`headroom score --models ETS,LightGBM,N-HiTS-refit4`, origins 53 to 963, paired.
+
+| Level | CRPS | Skill against seasonal naive | Minus ETS | Coverage at 90% | Mean width |
+|---|---|---|---|---|---|
+| City | 163.78 [150.27, 182.80] | +0.008 [-0.043, +0.042] | +28.39 [+21.72, +40.03] | 0.581 [0.562, 0.598] | 399.5 [382.3, 414.8] |
+| Borough | 39.58 [36.95, 43.41] | +0.036 [-0.006, +0.063] | +7.19 [+5.97, +9.39] | 0.633 [0.620, 0.643] | 107.9 [104.5, 110.8] |
+| Dispatch area | 10.25 [9.85, 10.87] | +0.073 [+0.046, +0.089] | +1.98 [+1.82, +2.29] | 0.676 [0.667, 0.683] | 32.5 [31.8, 33.1] |
+
+For comparison on the same origins, ETS's skill is +0.180, +0.211 and +0.252, and
+LightGBM's +0.190, +0.222 and +0.252.
+
+* **At the city N-HiTS does not beat seasonal naive**, and it is 21 percent worse than ETS
+  in CRPS. At the dispatch areas it beats naive by 7 percent and is 24 percent worse than
+  ETS.
+* **Its quantiles are badly overconfident**: 58 to 68 percent coverage at 90 percent
+  nominal, with intervals about half as wide as ETS's. The multi-quantile loss did not
+  produce a calibrated distribution. Its quantile heads never crossed.
+
+### Three checks on whether the result is fair to it
+
+**The monthly refit is not the cause.** CRPS minus ETS by weeks since the last refit, where
+0 is a forecast from weights fitted that same origin:
+
+| Level | 0 | 1 | 2 | 3 |
+|---|---:|---:|---:|---:|
+| City | +26.3 | +28.3 | +34.8 | +24.1 |
+| Borough | +6.4 | +7.4 | +8.1 | +6.9 |
+| Dispatch area | +1.90 | +2.06 | +2.05 | +1.91 |
+
+A freshly fitted N-HiTS is as far behind ETS as one three weeks stale; there is no trend.
+Weekly refits (964 fits, about 73 hours of fitting) would have cost about 55 hours more,
+and there is no sign they would have closed the gap.
+
+**Both its median and its spread are worse.** The absolute error of its median is 12, 14
+and 17 percent above ETS's at the city, boroughs and areas. Wrapping that median in the
+same conformal predictive distribution LightGBM uses fixes the calibration (coverage 0.903,
+0.902, 0.904) and still leaves it behind ETS: city +18.56 [+12.78, +29.28], borough +5.26
+[+4.17, +7.23], dispatch area +1.61 [+1.47, +1.87]. At the city, the overconfident spread
+was about a third of the gap and the median the rest.
+
+**Compute.** 241 fits, median 274 seconds (10th to 90th percentile 264 to 310), so about
+18.3 hours of fitting on an idle machine. One fit recorded 11,194 seconds because the
+machine slept through it, and the fits while another session shared the machine ran up to
+about 310; both are why the median, not the total, is the reported figure. The run's wall
+clock, 22.5 hours, includes a three-hour sleep.
+
+### A second seed, measured 2026-09-15
+
+The GPU test below showed one fit at one origin scoring a city CRPS of 103 on the GPU
+against 159 on the CPU, so the luck of a fit had to be measured. Twenty refit origins,
+evenly spaced from 56 to 960 (2009-01-26 to 2026-05-25), were refitted with
+`random_seed` 1 instead of 0, and each fit forecast the 4 origins it serves, exactly as in
+the monthly run: 80 origins in all. Scored against seed 0 and ETS on those same origins
+(means over the 20 refits; intervals an ordinary bootstrap over refits, which are about
+eleven months apart and treated as independent):
+
+| Level | Seed 0 | Seed 1 | ETS | Seed 1 minus seed 0 | Seed 1 minus ETS | Seed 1 behind ETS |
+|---|---:|---:|---:|---|---|---:|
+| City | 153.80 | 147.36 | 123.51 | -6.44 [-15.35, +2.38] | +23.85 [+13.76, +33.74] | 18 of 20 |
+| Borough | 36.55 | 36.14 | 30.12 | -0.41 [-1.35, +0.63] | +6.02 [+4.55, +7.46] | 19 of 20 |
+| Dispatch area | 9.91 | 9.88 | 8.05 | -0.03 [-0.15, +0.08] | +1.83 [+1.73, +1.94] | 20 of 20 |
+
+**One fit is noisy; the verdict is not.** At the city a single refit's CRPS moved by 10.5
+at the median and by 56 at most between seeds, the same size of effect the GPU test
+found, and it shrinks by level (1.2 at the boroughs, 0.19 at the areas). On average the
+second seed is no different from the first, and it is behind ETS by about as much as
+the full run, at every level. Its 90 percent coverage is 0.61 at the city, 0.66 at the
+boroughs and 0.69 at the areas, as poor as seed 0's. The refits took 311 seconds at the
+median against the monthly run's 274; other work shared the machine for the first part
+of this run, so it is not a timing. The check was a one-off script outside the package,
+and the table is its whole output.
+
+The settings stay fixed and untuned; that part is unchanged.
+
+### What it is given
+
+One network across all 37 series, through NeuralForecast 3.2.2 on PyTorch 2.14 (CPU). It
+reads the last 112 days (sixteen weeks, eight horizons) of demand on synthetic dates, so,
+like the statistical models and unlike LightGBM, it has no calendar and no holidays. Each
+input window is scaled by NeuralForecast's robust scaler so the city does not swamp the
+dispatch areas. The loss is the multi-quantile loss on the 199-level scoring grid, so its
+output is the distribution CRPS is scored on; crossed quantile heads are sorted and the
+scorer reports how often they crossed.
+
+Fixed, not tuned on the backtest: NeuralForecast's N-HiTS architecture defaults (three
+stacks, two 512-unit layers each), 1,000 training steps, learning rate 0.001, all 37 series
+per batch, 1,024 windows per batch, seed 0, no validation split.
+
+### The refit schedule, and why it is not weekly
+
+| Measured 2026-09-14 on machine B | Seconds |
+|---|---:|
+| One fit at origin 482, 9 to 27 percent background load | 332 |
+| The same fit, busier machine | 399 |
+| One forecast from fitted weights | under 0.1 |
+
+Neither fit time is an idle measurement; both are recorded because the schedule had to be
+chosen from them. The two fits produced identical forecasts, so the model is deterministic
+on CPU at this seed.
+
+| Refit every | Fits | Estimated run |
+|---|---:|---:|
+| Origin (weekly, as ETS and LightGBM) | 964 | about 89 hours |
+| 4 origins (roughly monthly) | 241 | about 22 hours |
+| 13 origins (roughly quarterly) | 75 | about 7 hours |
+| 52 origins (yearly) | 19 | about 2 hours |
+
+Between refits the model forecasts each origin from that origin's own last 112 days with
+weights trained at the last refit, so nothing after an origin is ever used, and the
+forecast still sees the newest demand. What it does not get is weights that have learned
+from the most recent weeks. That is a handicap the weekly-refitted models do not carry.
+The schedule is part of the checkpoint's name (`N-HiTS-refit13`), and a resumed run refits
+on the same origin an uninterrupted one would have, so the two produce the same forecasts.
+
+Checked end to end on the real panel before any real run, with the fit cut to five
+training steps: fits landed on origins 0, 300, 600 and 900, every origin was forecast in
+about six minutes in total, and the checkpoint scored.
+
+### The GPU does not help, and a single fit depends on its arithmetic
+
+Machine B has an NVIDIA GeForce GTX 1650 (4 GB). It was tested 2026-09-14 in a separate
+environment with PyTorch 2.11 built for CUDA 12.8 (the newest CUDA build published), the
+same settings and the same origin as the CPU timing, while the monthly CPU run was
+already going:
+
+| Device | Fit | Forecast | City CRPS at origin 482 | Dispatch area CRPS |
+|---|---:|---:|---:|---:|
+| CPU, PyTorch 2.14 | 303 to 332 s | under 0.1 s | 159.5 | 9.52 |
+| GPU, PyTorch 2.11 + CUDA 12.8 | 309 s (362 on first use) | 0.15 s | 103.1 | 9.66 |
+
+**No speedup.** The GPU ran at 96 percent utilisation with 272 MiB of memory, so the card,
+not the CPU feeding it, was the limit. The backtest stays on the CPU, which is also what a
+reader reproducing it will have.
+
+**A second finding matters more.** Each device is deterministic (two GPU fits were
+identical to the last digit), yet the GPU's forecast at that origin scored a city CRPS of
+103.1 against the CPU's 159.5, while the dispatch areas barely moved. One fit of this
+network, from the same data and seed, lands in a noticeably different place depending on
+the arithmetic path (device, and PyTorch 2.11 against 2.14). A single origin's N-HiTS
+number therefore says little; only the average over hundreds of origins can be read. The
+second-seed refit above measured it: single fits move by this much, averages do not. The
+statistical models do not have this sensitivity to anything like the same degree.
+
+The test ran on the GPU while the CPU backtest was fitting, from about 08:30 to 08:45, so
+the fit times the backtest recorded in that window are inflated and are excluded from its
+reported compute.
+
+---
+
+## PatchTST
+
+Built 2026-09-15 through the same wrapper as N-HiTS (`headroom.models.neural.GlobalNeural`),
+so it is fitted, forecast and refitted identically: the same 112-day input, 1,000 training
+steps, 37 series and 1,024 windows per batch, robust scaler and seed 0.
+Its architecture and learning rate (0.0001) are NeuralForecast's defaults: three encoder
+layers, 16 heads, hidden size 128, patches of 16 days with a stride of 8, and reversible
+instance normalisation. Nothing was tuned.
+
+### The schedule, and what it cost
+
+A fit is about five times an N-HiTS fit (274 seconds at the median), which made the refit
+schedule a real choice rather than a default:
+
+| Refit every | Fits | Estimated run |
+|---|---:|---:|
+| 4 origins, as N-HiTS | 241 | about 91 hours |
+| 13 origins | 75 | about 28 hours |
+| 16 origins | 61 | about 23 hours |
+
+**Every 13 origins was chosen** and run 2026-09-16 08:34 to 2026-09-17 17:26: 964 origins,
+75 fits, 32.87 hours wall clock. The estimate was 28.
+
+### Measured result: it ties ETS at the top, loses at the leaves
+
+`headroom score --models ETS,LightGBM,N-HiTS-refit4,PatchTST-refit13 --step 7`, 2026-09-17,
+on the shared 911-origin window. Coverage and width are of its own quantiles, with no
+conformal step.
+
+| Level | PatchTST CRPS | Skill against seasonal naive | PatchTST minus ETS | Coverage at 90% | Mean width |
+|---|---|---|---|---:|---:|
+| City | 131.95 [121.92, 145.72] | +0.201 [+0.171, +0.224] | -3.45 [-6.72, +2.48] | 0.896 [0.884, 0.909] | 778 [743, 817] |
+| Borough | 32.08 [30.13, 34.79] | +0.218 [+0.195, +0.235] | -0.31 [-0.89, +0.67] | 0.901 [0.892, 0.909] | 190 [183, 197] |
+| Dispatch area | 8.377 [8.072, 8.803] | +0.243 [+0.229, +0.252] | +0.103 [+0.041, +0.203] | 0.900 [0.895, 0.905] | 49.3 [48.2, 50.6] |
+
+And against LightGBM, the other model that ties ETS, paired on the same origins. This
+comparison is not one the score command prints, so it was computed separately with the
+same block bootstrap:
+
+| Level | PatchTST minus LightGBM | Origins where PatchTST is better |
+|---|---|---:|
+| City | -1.80 [-6.79, +2.28] | 50.5% |
+| Borough | +0.18 [-0.69, +0.92] | 48.3% |
+| Dispatch area | +0.096 [+0.005, +0.185] | 44.5% |
+
+What this says:
+
+* **Its city CRPS of 131.95 is the lowest in the project**, below LightGBM's 133.75 and
+  ETS's 135.40, and it cannot be claimed: the paired interval against ETS straddles zero,
+  and so does the one against LightGBM.
+* **It loses at the dispatch area**, +0.103 against ETS and +0.096 against LightGBM, both
+  intervals clear of zero, on 44.5 percent of origins against LightGBM.
+* **Its quantiles are the best calibrated of any model here**, 0.896 / 0.901 / 0.900
+  against 0.90, while being narrower than ETS at the city and borough. Contrast N-HiTS at
+  0.581 to 0.676. The two neural models fail in unrelated ways and should not be reported
+  as one finding; `docs/neural-verdict.md` treats them separately.
+
+### Fit time, and why the published figure is the conservative one
+
+The run was interrupted twice by other work on the machine, which is visible in the fit
+times and is exactly the failure this document already records twice under Compute. Three
+regimes:
+
+| Fits | Origins | Range | Mean |
+|---|---|---|---:|
+| Opening | 0 to 390 (31 fits) | 1,255 to 1,388 s | 1,327 s |
+| Contended | 403 to 637 (19 fits) | 1,279 to 3,030 s | about 2,450 s |
+| Quietest | 650 to 962 (25 fits) | 1,204 to 1,276 s | 1,229 s |
+
+The contention began at 19:58 on 2026-09-16, when a second editor and agent session
+started, and worsened at 07:55 the next morning when an unrelated training run began; it
+ended when both were stopped at 08:23, mid-fit, which is why the fit at origin 637 reads
+1,680 s.
+
+**The README reports 27.3 hours**, from the report command's rule: the median model time
+per origin times 964 origins. The median is the point of that rule. 56 of the 75 fits are
+clean, so the median fit of 1,325 s sits in a clean regime and the contaminated stretch
+cannot move the published number.
+
+It is nonetheless the conservative figure. The median lands in the opening regime, and the
+quietest 25 fits averaged 1,229 s, which would give **25.3 hours**. The two clean regimes
+differ by about 7 percent and the difference is not explained; the opening stretch
+overlapped other work in this repository. Rather than pick, the table keeps the mechanical
+median rule and this note records the spread. Either figure supports the same conclusion,
+so nothing in the verdict turns on it.
+
+Wall clock for the run, 32.87 hours, is not a measurement of anything and is not reported
+as one.
+
+---
+
 ## Conformal intervals
 
 ### What each method assumes
@@ -343,6 +1042,210 @@ such rather than quietly attempted; nothing in this repository claims it yet.
 
 ---
 
+## TimesFM: what it was trained on, and where it can be scored
+
+`PLAN.md` section 2.7a adds TimesFM as a zero-shot forecaster and requires its pretraining
+corpus to be recorded here before any TimesFM number is reported. Researched 2026-09-13
+from the model cards, the TimesFM paper and the public pretraining collection itself.
+Nothing below has been measured on this panel yet.
+
+### Which version
+
+**TimesFM 2.5, 200M parameters, Apache 2.0** (`google/timesfm-2.5-200m-pytorch`, published
+2025-09). TimesFM 3.0 (`google/timesfm-3.0-pytorch`, published 2026-08-24) was considered
+and not chosen, for two reasons. Its model card gives the same data cutoffs as 2.5, so it
+buys nothing on the leak. And its weights are under the TimesFM Non-Commercial License
+v1.0, restricted to non-commercial, non-production use, which is an avoidable complication
+for a public repository when 2.5 is Apache 2.0.
+
+### The pretraining corpus, as documented
+
+The 2.5 model card lists four sources:
+
+| Source | Documented cutoff |
+|---|---|
+| Wikimedia pageviews | **November 2023** |
+| Google Trends top queries (about 22k queries) | End of 2022 |
+| GiftEvalPretrain (Salesforce; 88 datasets, about 4.5M series) | Varies; checked below |
+| Synthetic and augmented series | No calendar dates |
+
+The latest documented real data ends in **November 2023**.
+
+### What was checked independently
+
+GiftEvalPretrain is public, so its contents were listed and the constituent datasets
+that bear on this project were opened and their date ranges computed from each series'
+start and length:
+
+| Dataset | Relevance | Series | Period |
+|---|---|---:|---|
+| `covid_mobility` | Google COVID community mobility; the 2020 shock directly | 362 | 2020-02-15 to 2021-04-02 |
+| `covid19_energy` | Electricity demand through lockdown | 1 | 2017-03 to 2020-11 |
+| `cdc_fluview_ilinet` | US influenza-like illness, weekly; health demand through 2020 | 75 | 1997-10 to **2023-10** |
+| `project_tycho` | US notifiable disease counts | 1,258 | 1888 to 2014 |
+| `uber_tlc_daily` | New York City Uber pickups | 262 | 2015 |
+| `rideshare_with_missing` | New York City Uber and Lyft | 2,304 | 2018-11-26 to 2018-12-11 |
+| `godaddy` | Microbusiness density | 3,135 | 2019-08 to 2022-12 |
+
+`taxi_30min` (New York City taxi demand, 2015 to 2016 per its source) was not opened, at
+222 MB. The largest collections (`era5_*`, `cmip6_*`, `largest_*`, `buildings_900k`) were
+not opened either; their names and sources place them in 2021 or earlier.
+
+**Findings.** No constituent is NYC emergency medical dispatch, 911, or hospital data.
+New York City appears only as ride-hailing and taxi demand from 2015 to 2018. No
+constituent checked runs past November 2023. The corpus does contain the 2020 shift in
+several forms that bear directly on this project's headline: mobility collapsing in
+March 2020, influenza-like illness through the pandemic, and Wikipedia and search
+behaviour across it. TimesFM has not seen these ambulance counts, but it has learned what
+March 2020 looked like.
+
+**What cannot be checked.** The Wikipedia and Trends extracts and the synthetic series are
+not published, so the November 2023 cutoff rests on Google's documentation for those.
+
+### The clean windows
+
+A clean origin is one whose whole 14-day horizon falls after the pretraining data ends.
+
+| Window | First forecast day | Basis | Weekly origins to 2026-06-30 |
+|---|---|---|---:|
+| **Primary** | 2023-12-01 | Latest documented pretraining data | about 133 |
+| Cross-check | 2025-09-16 | Model release; the most conservative reading | about 40 |
+
+The primary window is the TimesFM result. The cross-check is a subset of the same
+forecasts and costs nothing. If TimesFM's skill is materially higher on the stretch
+between the two windows than after the release, that points to undocumented overlap and
+is reported as such. Full-history TimesFM numbers are labelled as exposed and never pooled
+with either window. Both clean windows fall entirely after the 2020 shift, so TimesFM
+contributes nothing to the coverage-through-the-shift claim.
+
+### Intervals come from conformal, not from its quantile head
+
+TimesFM 2.5 returns the mean and the 0.1 to 0.9 quantiles. This project scores on a grid
+from 0.005 to 0.995 and reports 95 percent intervals, which need the 0.025 and 0.975
+quantiles the model does not produce. Extrapolating the tails would make TimesFM's CRPS
+and 95 percent coverage depend on a rule chosen here. Instead its **median** is taken as
+the point forecast and its intervals are built by the same conformal methods as every
+other model's (split, adaptive, aggregated). Its own deciles are kept and may be reported
+beside the conformal intervals at 80 percent, the one level they reach, but they are not
+the result.
+
+### As built, 2026-09-17
+
+**The gate is passed.** `PLAN.md` section 2.7a made the whole addition conditional on
+TimesFM installing and running under Python 3.13, which this project requires. It does,
+on machine B under Windows: the weights load in about 15 seconds and 37 series forecast
+in one call.
+
+**The library and the checkpoint are versioned separately, and only the checkpoint was
+pinned.** The plan pins TimesFM **2.5** because 2.5's weights are Apache 2.0 where 3.0's
+are not. The PyPI package `timesfm` has its own numbering, and the line that still exposes
+`TimesFM_2p5_200M_torch` is 3.0.x, so the 2.5 checkpoint is loaded through the 3.0
+library. `pyproject.toml` therefore pins `timesfm>=3.0,<4.0`, and the ceiling is a real
+one rather than a habit: a 4.x that drops the 2.5 loader is exactly the change that would
+break this. Nothing about the weights, the licence or the leak changes.
+
+**Settings.** The model card's own `ForecastConfig` (`normalize_inputs`,
+`use_continuous_quantile_head`, `force_flip_invariance`, `infer_is_positive`,
+`fix_quantile_crossing`), with two values that are this project's rather than the card's:
+a 1,095-day context, the window every other model here is given, and a 14-day horizon.
+Nothing was tuned on this backtest, for the same reason as every other model.
+
+**What it sees.** Demand only, one series at a time, with no dates, no calendar, no
+holidays and no series identity, so nothing crosses between the 37 series at inference
+either. That is less than LightGBM is given and the same as the statistical models.
+
+**What is stored.** Its nine deciles, on the grid `headroom.models.foundation.DECILES`.
+The median of those is the forecast and the distribution it is scored on is conformal,
+from its own past errors, as `PLAN.md` section 2.7a requires. The other eight deciles cost
+almost nothing to keep and are what the 80 percent interval, the one the model can produce
+unaided, is read from.
+
+**It is deterministic.** Two identical calls return identical forecasts, asserted in
+`tests/test_foundation.py`. Inference with no sampling ought to be, but a zero-shot model
+that moved between runs would make every number here unreproducible, and this is the
+cheapest place to find that out.
+
+### Measured result, 2026-09-18: it does not lose, and the windows disagree about why
+
+**Run 2026-09-17 21:17 to 2026-09-18 04:16.** 964 origins, 6.95 hours wall clock, nothing
+fitted. Scored on three windows that are never pooled. Positive is worse in every
+difference column.
+
+**The clean window is the result:** 133 origins, 2023-12-04 to 2026-06-15, every forecast
+day after the latest documented pretraining data.
+
+| Level | TimesFM CRPS | Skill against seasonal naive | minus ETS | minus LightGBM | Coverage at 90% |
+|---|---|---|---|---|---|
+| City | 125.34 [111.09, 139.01] | +0.286 [+0.247, +0.302] | **-24.34 [-29.84, -12.74]** | -6.85 [-12.37, +1.32] | 0.895 |
+| Borough | 31.79 [29.21, 34.50] | +0.271 [+0.251, +0.279] | **-3.23 [-4.20, -1.43]** | -0.49 [-1.43, +0.70] | 0.895 |
+| Dispatch area | 8.571 [8.331, 8.813] | +0.263 [+0.258, +0.267] | **-0.171 [-0.296, -0.040]** | +0.021 [-0.044, +0.109] | 0.903 |
+
+A model trained on none of this data beats the best statistical model at every level, with
+intervals clear of zero, and **ties the global LightGBM model that was trained on it**. Two
+things stop that being a headline about pretraining. LightGBM beats ETS on this same window
+too (city -17.49 [-30.15, -1.58]), so part of what both gain is that a conformal
+distribution rebuilt from the last 52 origins tracks recent demand where ETS's own
+quantiles do not: ETS's city coverage here is 0.889 and falls to 0.791 on the last 40
+origins. And the window disagrees with itself, which is the next table.
+
+**The leak test `PLAN.md` section 2.7a asked for.** The plan said that if TimesFM's skill
+is materially higher before the weights were published than after, that points to
+undocumented overlap. It is. Paired against LightGBM, which is refitted at every origin and
+is the fairest comparison because both are scored the same conformal way:
+
+| Window | Origins | City | Borough | Dispatch area | Origins won at the city |
+|---|---:|---|---|---|---|
+| Full backtest, exposed | 911 | -12.82 [-18.34, -8.74] | -1.74 [-2.60, -1.12] | -0.114 [-0.196, -0.052] | 64.1% (584 of 911) |
+| Clean, after the pretraining data | 133 | -6.85 [-12.37, +1.32] | -0.49 [-1.43, +0.70] | +0.021 [-0.044, +0.109] | 63.2% (84 of 133) |
+| Between the two windows | 93 | -10.45 | -1.15 | -0.017 | 72.0% (67 of 93) |
+| Cross-check, after the weights were published | 40 | +1.51 | +1.06 | +0.110 | 42.5% (17 of 40) |
+
+The advantage shrinks as the origins move further from anything the weights could have
+absorbed, and on the post-release stretch it is gone. **Two explanations fit and this
+project cannot separate them.** One is the leak: undocumented overlap with data up to the
+release, which the corpus research could not rule out for the Wikipedia and Trends
+extracts. The other is staleness: TimesFM's weights are frozen while LightGBM refits every
+week, so any change in demand after 2025-09 is something one model can follow and the other
+cannot, and every model does score worse on that stretch. Forty origins cannot tell those
+apart, and neither reading is reported as the finding.
+
+**Why those two rows carry no interval.** The moving block bootstrap here lays each
+resample out as whole blocks of 28 origins, so a 40-origin window resamples from almost
+nothing. It does not fail loudly: asked for ETS's CRPS skill on that window it returned
+**+0.1126 [+0.1171, +0.1853]**, an interval that does not contain its own point estimate.
+The report now prints no interval below 112 origins, four blocks, and says so under the
+table. A narrow wrong interval is worse than none, because it reads as precision.
+
+**Its own deciles, the one interval it produces unaided.** No conformal step, 80 percent
+nominal, which is as far as its quantile head reaches:
+
+| Window | City | Borough | Dispatch area |
+|---|---|---|---|
+| Full backtest, exposed | 0.7923 [0.7803, 0.8052] | 0.7907 [0.7822, 0.8000] | 0.7924 [0.7873, 0.7976] |
+| Clean, after the pretraining data | 0.7836 [0.7363, 0.8147] | 0.7841 [0.7541, 0.8078] | 0.7876 [0.7775, 0.7954] |
+| Cross-check, after the weights were published | 0.7161 | 0.7361 | 0.7680 |
+
+Against a 0.80 target that is good calibration from a model that has never seen this
+series, and it decays on the most recent stretch in the same place the CRPS advantage does.
+The deciles never cross, checked over all 964 origins.
+
+**Cost, and why this one is a measurement.** Median 25.7 seconds an origin, so the
+published figure is 6.89 hours for the full schedule. The run shared the machine with
+another job for its first stretch and had it to itself afterwards: the first 100 origins
+have a median of 33.4 seconds and the last 100 of 25.4, and the run's own median of 25.7
+sits in the quiet regime, so the published number is not a busy-machine measurement. The
+quietest quarter implies 5.67 hours. Recorded inference time was 6.90 of the 6.95 hours of
+wall clock, so checkpointing cost 0.7 percent at `--save-every 10`.
+
+Sources: [TimesFM 2.5 model card](https://huggingface.co/google/timesfm-2.5-200m-pytorch),
+[TimesFM 3.0 model card](https://huggingface.co/google/timesfm-3.0-pytorch),
+[TimesFM 2.0 model card](https://huggingface.co/google/timesfm-2.0-500m-pytorch),
+[Das et al., arXiv 2310.10688](https://arxiv.org/abs/2310.10688),
+[GiftEvalPretrain](https://huggingface.co/datasets/Salesforce/GiftEvalPretrain),
+[Aksu et al., arXiv 2410.10393](https://arxiv.org/abs/2410.10393).
+
+---
+
 ## Compute, and why these numbers are stated carefully
 
 `PLAN.md` section 1 promises "compute time per method" as a reported number, so it is
@@ -351,7 +1254,40 @@ it.
 
 ### Cost per origin, idle machine
 
-37 series, 1,095-day trailing window, 12 cores, `n_jobs=-1`, 2026-09-12:
+Two machines have been measured, and the difference between them is large enough that a
+compute figure without its machine is not a number.
+
+**Machine B**, the one every result above was produced on from 2026-09-13: Intel Core
+i5-10400F, 6 cores and 12 threads, 16 GB, `n_jobs=-1`. From `headroom timings --step 28`,
+each model timed alone at three origins spread across the record:
+
+| Method | Seconds per origin | Range over the three origins |
+|---|---:|---|
+| ETS | 10.8 | 11 to 11 |
+| Theta | 9.1 | 9 to 9 |
+| MSTL | 11.5 | 11 to 12 |
+| AutoARIMA | 65.0 | 55 to 77 |
+
+The narrow ranges are the check that the machine was idle.
+
+**The weekly run itself**, ETS, Theta and MSTL in one batched call over all 964 origins:
+**7.79 hours wall clock, of which 4.80 hours was model fitting** (17.9 seconds per origin
+for all three, against 31.4 for their separate times added, so batching saved 43 percent).
+The other 3.0 hours was writing checkpoints: each save rewrites the whole compressed file,
+which grows to about 740 MB per model, so saving every five origins cost more and more as
+the run went on. That overhead is quadratic in the number of origins and should be fixed
+before a longer run, by writing each batch of origins to its own file.
+
+The per-model "model time" the score command prints (1.60 hours each) is that 4.80 hours
+split evenly, because a batched call cannot attribute time to one model. The separate
+per-model cost is the table above.
+
+A fit that started twelve worker processes at once failed on this machine with "the
+paging file is too small" until the Windows paging file was raised to a fixed 32 to 48 GB:
+each worker commits memory for numpy and the model libraries before it does any work.
+
+**Machine A**, the earlier laptop. 37 series, 1,095-day trailing window, 12 cores,
+`n_jobs=-1`, 2026-09-12:
 
 | Method | Seconds per origin |
 |---|---:|
@@ -399,3 +1335,12 @@ therefore a real choice with a stated cost, not an implementation detail:
 The last column is what the choice costs scientifically: the headline chart resolves the
 March 2020 shift only as finely as the origins are spaced. Whichever is chosen is recorded
 here with the resolution it bought.
+
+Those estimates are machine A's. **Weekly was chosen** once machine B measured three to
+four times faster, which put weekly within one overnight run and kept the full resolution
+through 2020. AutoARIMA at weekly origins on machine B was projected at about 17 hours
+alone and deferred to its own run; that run happened on 2026-09-15 and **came in at 15.21
+hours wall clock**, 56 seconds an origin, against the 65.0 the three-origin timing above
+predicted. The three-origin median over-predicted by about 16 percent, though the full-run
+mean falls inside the 55 to 77 range those three spanned. Three origins fix the order of
+magnitude and no more; the full-run mean is the number to quote.

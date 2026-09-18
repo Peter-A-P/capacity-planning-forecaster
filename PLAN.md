@@ -50,6 +50,8 @@ The numbers a stranger can check:
 | Reconciliation: coherence error after MinT (must be zero to numerical precision) and the change in CRPS at each level from reconciling | Sites sum to the region, and reconciling helped or hurt, said which |
 | Realised staffing cost per method at three service levels against an oracle that knew demand, from the backtest | The forecast as a rota decision, priced |
 | Neural against statistical: paired CRPS difference of N-HiTS and PatchTST against the best statistical model, per level and per horizon, with CIs, and training time | Where the neural model earned its complexity and where it did not |
+| Gradient boosting against statistical and neural: the same paired comparison for a global LightGBM model, so the gain from learning across series is separated from the gain from deep learning | Whether the neural models beat what a practitioner would try first, or only the per-series baselines |
+| Foundation model against statistical: the same paired comparison for TimesFM used zero-shot, reported separately on origins after its pretraining data ends | Whether a pretrained model beats the baselines on data it cannot have seen |
 | Compute time per method for the full backtest | What the accuracy costs in minutes |
 
 ## 2. Design decisions
@@ -109,6 +111,29 @@ the quantiles are coherent too. Coherence is verified numerically at every origi
 Conformal intervals are fitted on the reconciled forecasts, so the coverage claim is made
 about the numbers a planner would actually use.
 
+**As built, 2026-09-14 (point MinT).** Implemented in `headroom.reconcile.mint` rather than
+called through hierarchicalforecast, whose API wants in-sample fitted values the
+checkpoints do not hold; the shrinkage arithmetic is tested equal to the library's
+`mint_shrink`. ``W`` comes from each model's out-of-sample errors at the same horizon step
+over the previous 52 origins, not in-sample residuals. Quantiles move with their median.
+On ETS: coherence error from 515 incidents to 0, city CRPS -7.05 [-8.24, -4.80], borough
+-0.97 [-1.13, -0.69], dispatch area +0.007 [-0.009, +0.019].
+
+**As built, 2026-09-18 (probabilistic).** `headroom.reconcile.paths`. One deviation from the
+line above, recorded rather than made quietly: it says "bootstrap of reconciled in-sample
+errors", and the 52 error vectors in the window are used **once each rather than resampled
+with replacement**. Resampling adds no information to those 52 and would cost the order
+statistic convention the rest of this package uses, so the full sample is used and there is
+no seed to record. The errors are the same out-of-sample ones ``W`` is estimated from, for
+the reasons above. Every path is coherent to 5e-12 at every origin, against a base breach
+of 515 incidents; the marginal quantiles still do not sum, which is correct and is asserted
+in `tests/test_paths.py` so that nobody later "fixes" it. Paths are not floored at zero,
+because clipping breaks coherence; 0.0013 percent of ETS's path values fall below zero.
+Because the paths need only a median, this also reconciles the median-only models, which
+closes the gap `docs/state.md` recorded. Conformal on the reconciled forecasts is still to
+build: the paths already take their spread from realised errors, so what is left is the
+narrower question of whether an adaptive step on top of them adds anything.
+
 ### 2.6 The decision layer is a newsvendor
 
 Staffing at a chosen service level is the demand quantile at that level divided by a
@@ -118,6 +143,14 @@ the service level a planner chooses is shown next to the one the costs imply. Th
 backtest realises each method's staffing decision against actual demand and sums the cost,
 against an oracle. Inputs are a table in the README so a reader substitutes their own.
 
+**As built, 2026-09-14.** The inputs live in `inputs/decision.toml` (illustrative, and
+labelled so), which the code reads and the README will show. Staffing is per dispatch area
+per day, in whole units. At the cost-implied 80 percent, ETS's realised cost is 23 percent
+below seasonal naive's; MinT changes nothing at the areas; LightGBM ties ETS at 80 percent
+and costs 15 percent more at 95, where its wider upper tail staffs idle units. Staffing
+from the reconciled distribution is done for ETS; the probabilistic reconciliation it was
+meant to use is not built.
+
 ### 2.7 Neural models on CPU, named, and allowed to lose
 
 N-HiTS and PatchTST through NeuralForecast with a multi-quantile loss, trained as global
@@ -126,6 +159,153 @@ comparison against the best statistical model is per level and horizon with inte
 the neural models do not beat the statistical ones at the leaf level, or only at the top,
 the README says exactly that. Judgement reads as seniority; "deep learning won" reads as
 naive.
+
+**As built, 2026-09-14 (N-HiTS).** "Minutes per fit" was right and decides the design: a
+fit on the 37 series is about 5.5 minutes on the six-core machine (332 seconds at 9 to 27
+percent background load; not an idle measurement), and a forecast from fitted weights is
+under a tenth of a second. Refitting at every weekly origin would be about 89 hours. So
+`headroom neural` refits every *k* origins and forecasts every origin from its own fresh
+inputs with the last fitted weights; *k* is in the checkpoint's name and in every table
+that reports it. That is a disadvantage to the neural model, which the statistical and
+LightGBM models (refitted weekly) did not carry, so a neural win is conservative and a
+neural loss has to be read with it. The multi-quantile loss is trained on the project's
+own 199-level scoring grid, and the model sees demand only on synthetic dates, like the
+statistical models: no holidays, unlike LightGBM. The refit flag in
+`headroom.backtest.origins`, which nothing read before, is what drives it.
+
+**Result, 2026-09-15 (monthly refits).** N-HiTS loses to ETS at every level: CRPS minus
+ETS city +28.39 [+21.72, +40.03], borough +7.19 [+5.97, +9.39], dispatch area +1.98
+[+1.82, +2.29], coverage at 90 percent 0.58 to 0.68, about 18.3 hours of fitting. The
+refit schedule is not the cause, and a conformal version of its median is still behind.
+Section 9's candidate 3 is supported more strongly than this section expected;
+`docs/neural-verdict.md` has the reading and what it does not claim.
+
+### 2.7a A pretrained foundation model, with the leak stated (added 2026-09-13)
+
+TimesFM, Google Research's pretrained time-series foundation model, is added as a third
+contender beside N-HiTS and PatchTST, on Peter's decision. It is a different kind of
+model from those two: they are trained on the 37 series, and TimesFM is used zero-shot,
+with no training on this data at all. It is included because "does a pretrained model
+beat the statistical baselines on real demand, and do its intervals hold through a
+shift" is the question practitioners are asking now, and the answer is worth more than
+another architecture trained from scratch.
+
+**Pinned 2026-09-13: TimesFM 2.5, 200M parameters, Apache 2.0.** 3.0 has the same
+documented cutoffs and non-commercial weights. The pretraining corpus is recorded in
+`docs/methods.md`: the latest documented real data ends November 2023, none of it is NYC
+emergency dispatch data, and it does contain the 2020 shift in other series (Google
+mobility, influenza-like illness, Wikipedia and search behaviour). The primary clean
+window therefore starts 2023-12-01 (about 133 weekly origins), with a cross-check window
+from the model's release on 2025-09-15 (about 40). Its intervals are built by conformal
+around its median, not taken from its quantile head, which stops at the 0.1 and 0.9
+quantiles and would otherwise need an invented tail.
+
+**The leak.** Every other model here honours the backtest's guarantee that a forecast
+made at an origin sees nothing after it. TimesFM cannot. Its weights were trained years
+after most origins, on a corpus that includes the 2020 period in other series and may
+include public data overlapping this one. A forecast of March 2020 from a model that has
+seen how series behaved in 2020 is not a fair contest, and it would flatter exactly the
+headline coverage chart. It is handled in four ways:
+
+- The pretraining corpus and its end date are taken from Google's paper and model card
+  and recorded in `docs/methods.md`, with what is known and not known about overlap with
+  NYC open data.
+- TimesFM is scored on two sets of origins, reported side by side and never pooled: the
+  full backtest, marked as exposed to the leak, and a **clean window** of origins whose
+  whole horizon falls after the pretraining data ends. The clean window is the result;
+  its intervals will be wide because it is short, and the README says so.
+- If the pretraining data ends after this dataset does, there is no clean window, and
+  the README says TimesFM could not be evaluated fairly rather than reporting the
+  exposed numbers as a result.
+- TimesFM does not appear in the coverage-through-the-2020-shift chart without the leak
+  stated beside it.
+
+Otherwise it is treated like every other model: the same 1,095-day context, the same
+14-day horizon and quantile grid, conformal intervals fitted on its forecasts, skill
+against seasonal naive. With no training, each origin is inference only, so it is
+expected to run at every weekly origin; that is measured before it is relied on.
+Fine-tuning on this data is out of scope, because it would turn a zero-shot result into
+a third trained model and blur the one question it is here to answer.
+
+Before it is committed to: TimesFM must install and run under Python 3.13, which this
+project requires. If it does not, that is recorded and the addition is dropped.
+
+**Gate passed, 2026-09-17.** It installs and runs under Python 3.13. One clarification the
+pin above needs: the 2.5 that is pinned is the **checkpoint**, and the PyPI package
+`timesfm` is numbered separately, so the Apache 2.0 2.5 weights are loaded through the
+3.0.x library, which is the line that still exposes them. `docs/methods.md`, "As built",
+records that and the settings; the licence and the leak are unaffected. Built as
+`headroom.models.foundation` and run by `headroom zeroshot`.
+
+### 2.7b Gradient boosting, to separate global learning from deep learning (added 2026-09-13)
+
+A global LightGBM model is added on Peter's decision. It was planned through Nixtla
+MLForecast so it would sit in the same stack as the statistical and neural models; it was
+built without it, for the reasons under "As built" below.
+
+It is here because the comparison otherwise confounds two things. The statistical models
+are fitted per series with no features; N-HiTS and PatchTST are global models across all
+37 series and are deep learning. If a neural model wins, nothing says whether the gain came
+from the architecture or from learning across series. A global gradient-boosted model has
+the second without the first, and it is what a forecasting practitioner reaches for first
+(the M5 competition was won by LightGBM, not a neural network). The neural verdict is
+sharper with it: "N-HiTS beat ETS" is weak, and "N-HiTS beat ETS, and LightGBM got most or
+none of that gain at a fraction of the cost" is the judgement this project exists to show.
+LightGBM over XGBoost because it is faster on CPU at this size and is what the published
+forecasting benchmarks use; MLForecast takes either, so the choice is cheap to revisit.
+
+The design:
+
+- **Features, all known at the origin.** Lags of the series (1, 7 and 14 days back, and
+  further weekly lags within the trailing window), rolling means over the window, day of
+  week, day of year, and public holidays from `headroom.data.calendar`. Calendar features
+  are within scope (section 2.8); weather and events are not. Every lag feature is built
+  from values at or before the origin, and a test asserts it.
+- **One global model per refit** across the 37 series, with the series identity and its
+  hierarchy level as categorical features, on the same 1,095-day trailing window.
+- **The 14-day horizon is direct:** the horizon is handled without feeding the model's own
+  forecasts back in as inputs, so errors do not compound across days. Whether that is one
+  model per horizon step or one model with the step as a feature is settled in week 2 and
+  recorded.
+- **Intervals come from conformal around its median forecast,** exactly as for TimesFM.
+  Quantile regression would need one model per level, and this project's 199-level
+  scoring grid makes that impractical; conformal keeps the interval method identical
+  across the models that do not produce a full quantile grid of their own.
+- **Its advantage is stated.** It is the only model that sees holidays. That is recorded
+  beside its result, not buried, because a skill number that owes part of its gain to
+  information the other models were denied has to say so.
+
+It is cheap: seconds per fit on this panel, so it is expected to refit at every origin.
+That is measured before it is relied on. PatchTST is dropped before it.
+
+**As built, 2026-09-13.** Four decisions the design above left open or got wrong, each
+recorded in `docs/methods.md` with its evidence:
+
+- **Not through MLForecast.** The rows are built in `headroom.models.boosting` and passed
+  to LightGBM's native API. A direct model needs the holiday flag of the *target* day,
+  which is a different day for each horizon step, and the no-look-ahead test needs to
+  corrupt the future and see every feature of a row stay put. Both are a small tested
+  function of our own and opaque inside a wrapper. LightGBM is the model either way.
+- **The model is handed dates.** The backtest's forecaster interface passes demand only,
+  so a model cannot know when it is. This model gets the dates of its training window and
+  of the fourteen days ahead, never a demand value after the origin, and no feature
+  identifies the year.
+- **One model with the horizon step as a feature,** not one per step; each series divided
+  by its own training-window mean so the city does not swamp the dispatch areas.
+- **Its distribution is a conformal predictive distribution** from its own errors at the
+  previous 52 origins (`headroom.conformal.predictive`), with the same window, feedback
+  rule and order-statistic convention as the conformal intervals. The first 53 origins
+  have no distribution, so every comparison that includes LightGBM is made on origins 53
+  to 963 for all models.
+
+**Measured: about 7 seconds a fit on an idle six-core machine,** so refitting at every
+weekly origin is about 1.9 hours. A figure of 29 seconds recorded here on 2026-09-13 was
+taken on a busy machine and is retracted (`docs/methods.md`).
+
+**Result, 2026-09-14: a tie with ETS at every level.** Paired CRPS difference against
+ETS, origins 53 to 963: city -1.65 [-6.81, +5.98], borough -0.48 [-1.25, +0.62],
+dispatch area +0.007 [-0.067, +0.098]. Learning across series, with holidays, bought
+nothing measurable over the best per-series model.
 
 ### 2.8 Out of scope, on purpose
 
@@ -153,7 +333,9 @@ headroom/
   hierarchy/   spec.py (summing matrix), build.py
   backtest/    origins.py (rolling origin, refit schedule), run.py, store.py (Parquet per method)
   models/      baselines.py (seasonal naive), stats.py (ETS, Theta, AutoARIMA, MSTL via StatsForecast),
-               neural.py (N-HiTS, PatchTST via NeuralForecast, multi-quantile loss, CPU)
+               neural.py (N-HiTS via NeuralForecast, multi-quantile loss, CPU, scheduled refits),
+               foundation.py (TimesFM zero-shot, median forecast, CPU; clean-window origins),
+               boosting.py (global LightGBM, own lag and calendar features, direct horizon)
   conformal/   split.py, aci.py (adaptive conformal inference), agaci.py (aggregated experts), apply.py
   reconcile/   mint.py (point), probabilistic.py (bootstrap reconciliation), verify.py (coherence)
   score/       crps.py, pinball.py, coverage.py (rolling window), width.py, skill.py, bootstrap.py (block, over origins)
@@ -166,6 +348,17 @@ dashboard/     static site (HTML, a small chart library, precomputed JSON): fan 
                Azure Static Web Apps at capacity.peterparker.ca
 docs/          data.md, methods.md (assumptions, incl. conformal under dependence), neural-verdict.md, decision.md
 ```
+
+**As built, report (2026-09-15).** `report/tables.py` and `headroom report` exist; charts
+and export do not yet. The README's second placeholder table ("Reconciliation and the
+rota") mixed per-level, per-service-level and per-method numbers in one row, which no
+single row can hold, so the command writes it as two tables: CRPS before and after MinT
+per level, with the coherence breach stated above it, and staffing per service level and
+method with realised cost against the oracle. The first table keeps its columns; its worst
+window is the minimum over the whole period, which falls in spring 2020 for every method,
+and is dated rather than given an interval, since a bootstrap over a single worst stretch
+means nothing. Fit time is the median model time per origin times the schedule, so time lost to a
+busy or sleeping machine is not charged to a model.
 
 ### Tests that matter
 
@@ -180,12 +373,14 @@ quantile equals the cost ratio on fixtures; the dashboard JSON validates against
 | Dates | Built | Done when |
 |---|---|---|
 | Sep 12 to 18 2026 | NYC loader, aggregation, checks, hierarchy; rolling-origin harness; baselines and statistical models with quantiles; CRPS, pinball, coverage, width, skill, block bootstrap; split and adaptive conformal; the coverage-through-shift chart | Skill table with CIs for every statistical method; coverage chart through March 2020 |
-| Sep 19 to 25 2026 | N-HiTS and PatchTST; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; Rule C; README | Every table in section 1 filled |
+| Sep 19 to 25 2026 | LightGBM global model; N-HiTS and PatchTST; TimesFM zero-shot with its clean window; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; Rule C; README | Every table in section 1 filled |
 | After Oct 25 2026 | Dashboard exported and deployed on 01's static pattern; `v0.1.0`; repository public | Dashboard live |
 
 First to drop if behind: the NHS dataset; PatchTST (N-HiTS stays as the named neural
-model); probabilistic reconciliation (point MinT with conformal on the reconciled series
-stays). The baselines, probabilistic scoring, coverage through the shift, reconciliation
+model, TimesFM as the pretrained one, and LightGBM as the global non-neural one);
+probabilistic reconciliation (point MinT with
+conformal on the reconciled series stays). TimesFM is dropped only if it will not run
+under Python 3.13, and that is recorded. The baselines, probabilistic scoring, coverage through the shift, reconciliation
 coherence, the decision layer and the neural verdict are not droppable.
 
 ### 2.9 The training window is trailing (added 2026-09-12)
@@ -215,6 +410,8 @@ free tier. No model vendor is called.
 | Compute | Laptop CPU | 0 |
 | Hosting | Azure Static Web Apps free tier; custom domain on the owned domain | 0 |
 | Data | Open datasets | 0 |
+| TimesFM | Open weights, downloaded once, run on the laptop's CPU | 0 |
+| LightGBM | Open source, about 7 seconds per fit on a six-core desktop CPU | 0 |
 | Reserve | A rented CPU box for a day if the full backtest with refits is too slow locally | 10 |
 | **Total** | | **10** |
 
@@ -233,6 +430,8 @@ and the neural verdict are figures for the portfolio site.
 | Two weeks is tight and cleaning is underestimated | One dataset with a single aggregation step; the NHS set is optional and the first thing dropped |
 | Conformal subtleties under dependence | Adaptive methods designed for it; the assumption and its guarantee stated in the README next to the chart; split conformal kept to show the failure |
 | The neural models win everywhere, or nowhere | Either is reported with intervals; the verdict document is written whichever way |
+| LightGBM's lag or rolling features reach past the origin, which flatters it silently | Every feature is built from values at or before the origin, and a test corrupts the future of the panel and asserts no feature changes, the same pattern as the conformal feedback test |
+| TimesFM's pretraining overlaps the backtest, so its result is flattered | Scored separately on a clean window after its pretraining ends; the exposed full-history numbers are labelled and never pooled; no clean window means no reported result (section 2.7a) |
 | Reconciliation hurts leaf accuracy | Reported per level; MinT shrinkage parameter chosen on a validation window and stated |
 | The staffing numbers are taken as advice | Inputs are explicit and replaceable; the README says the ratio and costs are illustrative |
 | Open data terms | NYC Open Data and the Open Government Licence permit this use; recorded in `docs/data.md` |
@@ -247,7 +446,14 @@ and the neural verdict are figures for the portfolio site.
    least one level, and its intervals are worse calibrated; the table shows the divergence.
 3. **A global neural model as the default forecaster.** Expected: competitive at the top
    level, no better or worse than the statistical models at the leaves, at many times the
-   compute; this is the neural verdict itself.
+   compute; this is the neural verdict itself. With LightGBM beside them (section 2.7b)
+   the candidate becomes sharper: if the global boosted model matches the neural models,
+   the gain was from learning across series and the deep learning bought nothing.
+4. **Scoring a pretrained model on history it was trained after** (added 2026-09-13).
+   Expected: TimesFM looks markedly better on the full backtest, especially through
+   March 2020, than on the clean window after its pretraining ends. The gap between the
+   two is the evidence, and it is what an evaluation that ignored the leak would have
+   reported.
 
 Whichever produces the clearest evidence becomes `docs/rejected.md`.
 
@@ -260,6 +466,8 @@ Whichever produces the clearest evidence becomes `docs/rejected.md`.
 - [ ] MinT and probabilistic reconciliation; coherence verified at every origin; effect on accuracy per level reported
 - [ ] Decision layer: staffing at a stated service level from the reconciled distribution; newsvendor quantile from stated costs; realised cost per method against an oracle
 - [ ] N-HiTS and PatchTST against the best statistical model, paired with CIs; `docs/neural-verdict.md` says where they did not earn their complexity
+- [ ] LightGBM global model against the best statistical and best neural model, paired with CIs, its holiday features stated
+- [ ] TimesFM zero-shot against the best statistical model on its clean window, with the leak and its pretraining cutoff stated, in `docs/neural-verdict.md`
 - [ ] Static dashboard live at capacity.peterparker.ca
 - [ ] One rejected approach documented with evidence (Rule C)
 - [ ] Repository public, `v0.1.0` tagged

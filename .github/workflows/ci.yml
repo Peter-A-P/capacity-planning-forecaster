@@ -40,7 +40,7 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Install Python 3.13 and the project
-        run: uv sync --all-groups --extra stats
+        run: uv sync --all-groups --extra stats --extra boosting
 
       - name: ruff (lint)
         run: uv run ruff check .
