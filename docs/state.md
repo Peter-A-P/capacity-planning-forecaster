@@ -1,6 +1,6 @@
 # State of the build
 
-**Last updated: 2026-09-17.** Read this first if you are picking the project up. It says
+**Last updated: 2026-09-18.** Read this first if you are picking the project up. It says
 what exists, what has been measured, what decision is open, and what to do next.
 
 `PLAN.md` is the design and takes precedence. `docs/methods.md` has every measured number
@@ -12,16 +12,16 @@ cost. This file is the working state, and it goes stale; the other three do not.
 ## Where the build is
 
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
-repository at rev. 5). Two-week build; this is day 2.
+repository at rev. 5). Two-week build; this is day 7.
 
-**260 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**266 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
 |---|---:|---|
 | `test_backtest.py` | 39 | Origins and look-ahead, refit schedule, seasonal naive, the runner, checkpointing |
 | `test_neural.py` | 10 | N-HiTS and PatchTST quantiles, forecasting between refits, determinism; skipped without the neural extra |
-| `test_foundation.py` | 12 | TimesFM's clean window, the grid it is stored on, and where the scorer finds its median; the two that need the weights are marked slow |
+| `test_foundation.py` | 13 | TimesFM's clean window, the grid it is stored on, and where the scorer finds its median; the two that need the weights are marked slow |
 | `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
 | `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
 | `test_reconcile.py` | 9 | MinT coherence for any input, equality with hierarchicalforecast, feedback rule |
@@ -32,7 +32,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
 | `test_hierarchy.py` | 14 | The summing matrix and coherence |
 | `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
-| `test_report.py` | 37 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
+| `test_report.py` | 42 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
 
 ### Built and measured
 
@@ -50,8 +50,9 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ### The models, and what is still missing
 
-The first entries are done and are here because the verdict on them is the point, not the
-code. What is genuinely not built starts at TimesFM.
+Every model named in `PLAN.md` section 1 is now built and scored. The first entries are
+here because the verdict on them is the point, not the code. What is genuinely not built
+starts at probabilistic reconciliation.
 
 - **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
   scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
@@ -68,15 +69,17 @@ code. What is genuinely not built starts at TimesFM.
   0.900 from its own quantiles, the best calibrated model here. About 27.3 hours of
   fitting. Needs `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The
   neural tests skip where NeuralForecast is not installed, which includes CI.
-- **TimesFM, zero-shot: built and running, not yet scored.** `PLAN.md` section 2.7a,
-  `headroom zeroshot`, `headroom.models.foundation`. The gate the plan set is passed: it
-  installs and runs under Python 3.13 (`docs/methods.md`, "As built"). The 964-origin run
-  started 2026-09-17 21:17. **Read 2.7a before reporting any TimesFM number.** Its
-  pretraining postdates most origins, so the run covers the whole backtest but only the
-  **clean window is the result**: origins 831 to 963, 2023-12-04 onward, 133 of 964,
-  scored with `headroom score --from-day 2023-11-30`. The cross-check window is from the
-  model's release, `--from-day 2025-09-15`. The rest is labelled exposed and never pooled
-  with either. Its checkpoint holds its nine deciles; the median is the forecast and the
+- **TimesFM, zero-shot: done, and it is the one that did not lose.**
+  `docs/neural-verdict.md`. `PLAN.md` section 2.7a, `headroom zeroshot`,
+  `headroom.models.foundation`. **Read 2.7a before quoting any TimesFM number.** On the
+  clean window (133 origins, 2023-12-04 onward, every forecast day after the documented
+  pretraining data) it beats ETS at every level, city -24.34 [-29.84, -12.74], borough
+  -3.23, area -0.171, and **ties LightGBM**, city -6.85 [-12.37, +1.32]. 6.89 hours of
+  inference, nothing fitted. The catch: paired against LightGBM its lead is -10.45 at the
+  city on the 93 origins before the weights were published and +1.51 on the 40 after, which
+  is either the leak or a frozen model going stale, and 40 origins cannot say which.
+  Score it with `headroom score --from-day 2023-11-30`, cross-check with `--from-day
+  2025-09-15`. Its checkpoint holds its nine deciles; the median is the forecast and the
   scored distribution is conformal, as LightGBM's is.
 - **Reconciliation: point MinT done, probabilistic not built.** `headroom reconcile
   --model ETS`: coherence error 515 incidents to 0; city CRPS -7.05 [-8.24, -4.80],
@@ -92,16 +95,46 @@ code. What is genuinely not built starts at TimesFM.
   finished checkpoint on origins 53 to 963, picks the best statistical model by CRPS skill
   averaged over the levels (ETS +0.214, Theta +0.204, AutoARIMA +0.197, MSTL +0.098),
   reconciles and staffs
-  from it, and writes the three README tables between the report markers. About 10
+  from it, and writes the README tables between the report markers. About 15
   minutes. Its numbers reproduce `score`, `reconcile` and `decide` exactly; `decide` now
-  shares its staffing helpers. Rerun it whenever a checkpoint changes. The fan and
-  coverage charts are still to build.
+  shares its staffing helpers. Rerun it whenever a checkpoint changes. A model named in
+  `--zero-shot` gets its own windowed table instead of a row in the main one, because its
+  origins are not the main table's origins. The fan and coverage charts are still to build.
 - **Dashboard.** Deliberately held until project 01 builds the static decision-app pattern
   in its week 7 (Oct 19 to 25 2026), so 08 reuses it rather than inventing it. Peter's
   call, recorded in `PLAN.md`.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---
+
+## Done: TimesFM, zero-shot, and the window that disagrees with itself
+
+**Run 2026-09-17 21:17 to 2026-09-18 04:16, scored 2026-09-18.** 964 origins, 6.95 h wall
+clock, nothing fitted. Full tables in `docs/methods.md` under "Measured result", verdict in
+`docs/neural-verdict.md`. On the clean window, 133 origins from 2023-12-04:
+
+| Level | TimesFM minus ETS | TimesFM minus LightGBM | Coverage at 90% |
+|---|---|---|---|
+| City | -24.34 [-29.84, -12.74] | -6.85 [-12.37, +1.32] | 0.895 |
+| Borough | -3.23 [-4.20, -1.43] | -0.49 [-1.43, +0.70] | 0.895 |
+| Dispatch area | -0.171 [-0.296, -0.040] | +0.021 [-0.044, +0.109] | 0.903 |
+
+A model trained on none of this data beats the model fitted to each series, and ties the
+global model trained on it. **Two things to know before quoting that.** LightGBM also beats
+ETS on this window, so part of what both gain is the conformal distribution tracking recent
+demand where ETS's own quantiles do not. And the lead against LightGBM is -10.45 at the
+city on the 93 origins before the weights were published and +1.51 on the 40 after, which
+is either undocumented overlap or a frozen model going stale against a weekly refit.
+
+**Three things this run added to the code**, each with tests: the report keeps a pretrained
+model out of the main table and gives it its own windowed table, because its origins are
+not that table's origins; a model reported that way says "own windows, below" and never
+"not built"; and no block-bootstrap interval is printed below 112 origins, four blocks,
+after the 40-origin window returned an interval that did not contain its own point
+estimate.
+
+Commands: `uv run --extra foundation headroom zeroshot --step 7 --save-every 10`, then
+`uv run headroom score --models TimesFM,ETS,LightGBM --from-day 2023-11-30`.
 
 ## Done: PatchTST, a tie at the top and a loss at the leaves
 

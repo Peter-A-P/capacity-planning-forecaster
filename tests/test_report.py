@@ -12,8 +12,11 @@ import numpy as np
 import pytest
 
 from headroom.cli import (
+    MIN_BOOTSTRAP_ORIGINS,
     PROMISED_ROWS,
+    _absent_rows,
     _base_model,
+    _difference_cell,
     _listing,
     _method_label,
     _refit_every,
@@ -29,6 +32,7 @@ from headroom.report.tables import (
     splice,
     worst_window,
 )
+from headroom.score.bootstrap import BLOCK
 
 README = (
     f"# Title\n\nIntro stays.\n\n## Result\n\n{START}\nold tables\n{END}\n\n## After\n\nKept.\n"
@@ -173,8 +177,41 @@ def test_a_network_that_was_run_is_never_also_listed_as_not_built():
     # a hardcoded "PatchTST | not built" row beneath it, saying both things at once.
     reported = ["LightGBM", "N-HiTS-refit4", "PatchTST-refit13"]
     built = {_base_model(name) for name in reported}
-    unbuilt = [label for network, label in PROMISED_ROWS if network not in built]
-    assert unbuilt == ["TimesFM, zero-shot (clean window only)"]
+    assert _absent_rows(built, set()) == [("TimesFM, zero-shot", "not built")]
+
+
+def test_a_model_scored_on_its_own_windows_is_not_called_not_built_either():
+    # TimesFM is kept out of the main table because its origins are not that table's
+    # origins. That is a different statement from not existing, and a reader who is told
+    # "not built" under a table of TimesFM results has been told something false.
+    built = {"LightGBM", "N-HiTS", "PatchTST"}
+    assert _absent_rows(built, {"TimesFM"}) == [("TimesFM, zero-shot", "own windows, below")]
+
+
+def test_a_model_in_the_main_table_gets_no_absent_row_whatever_else_it_is_in():
+    assert _absent_rows({"N-HiTS", "PatchTST", "TimesFM"}, {"TimesFM"}) == []
+
+
+def test_a_window_too_short_for_the_block_bootstrap_reports_no_interval():
+    # Measured on TimesFM's 40-origin cross-check window: the bootstrap returned an
+    # interval that did not contain its own point estimate. A narrow wrong interval is
+    # worse than none, because it reads as precision.
+    rng = np.random.default_rng(0)
+    short = rng.normal(size=MIN_BOOTSTRAP_ORIGINS - 1)
+    cell = _difference_cell(short, places=2)
+    assert "[" not in cell
+    assert cell.startswith(("+", "-"))
+
+
+def test_a_window_long_enough_still_carries_its_interval():
+    rng = np.random.default_rng(0)
+    values = rng.normal(size=MIN_BOOTSTRAP_ORIGINS)
+    assert "[" in _difference_cell(values, places=2)
+
+
+def test_the_floor_is_whole_blocks_of_the_bootstrap_this_project_uses():
+    # If BLOCK changes, the floor has to move with it rather than stay at an old number.
+    assert MIN_BOOTSTRAP_ORIGINS == 4 * BLOCK
 
 
 def test_every_promised_network_is_named_the_way_its_checkpoints_are():

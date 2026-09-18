@@ -67,6 +67,15 @@ PRETRAINING_ENDS: Final[date] = date(2023, 11, 30)
 #: kept as a cross-check on the primary window rather than as the result.
 RELEASED: Final[date] = date(2025, 9, 15)
 
+#: The windows this model may be judged on, as (how the tables name it, first origin day),
+#: in the order the tables read them. The first is the result; the second is the same
+#: forecasts on a shorter and more conservative window, so it is a subset and not a second
+#: result. The full backtest is neither and is always labelled as exposed.
+WINDOWS: Final[tuple[tuple[str, date], ...]] = (
+    ("Clean: whole horizon after the pretraining data", PRETRAINING_ENDS),
+    ("Cross-check: after the weights were published", RELEASED),
+)
+
 #: The forecast configuration, from the model card except for the two lines that are this
 #: project's own: the 1,095-day window every model here is given, and the 14-day horizon.
 FORECAST_CONFIG: Final[dict[str, Any]] = {

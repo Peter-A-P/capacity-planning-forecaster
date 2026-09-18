@@ -5,13 +5,17 @@ not earn their complexity. Every number is from `docs/methods.md`, which says ho
 produced; all comparisons are paired over the same 911 weekly origins (2009-01-05 to
 2026-06-15), with 95 percent block-bootstrap intervals.
 
-**Status, 2026-09-17:** N-HiTS and PatchTST measured. TimesFM not built.
+**Status, 2026-09-18:** N-HiTS, PatchTST and TimesFM all measured.
 
-**The short version.** Neither neural model beats the best statistical model, but they fail
-in completely different ways and only one of them fails badly. N-HiTS is broken here:
+**The short version.** Neither model trained from scratch on this data beats the best
+statistical model, and they fail in completely different ways. N-HiTS is broken here:
 miscalibrated and beaten at every level. PatchTST is a good forecaster that ties ETS at the
 city and the borough, loses narrowly at the dispatch areas, and costs about seventeen times
-as much to fit. Reporting them as one result would be wrong.
+as much to fit. **The one that does not lose is the one that was never trained on this data
+at all**: TimesFM, used zero-shot, beats ETS at every level on the window after its
+pretraining data ends and ties the global LightGBM model there. That result comes with a
+caveat the other two do not have, and the caveat is in section "What the TimesFM windows
+disagree about" rather than in a footnote.
 
 ## The question, and why LightGBM is in it
 
@@ -59,6 +63,59 @@ CRPS, paired against ETS. Negative is better than ETS.
 6. **The compute is the verdict.** PatchTST costs about seventeen times ETS and fourteen
    times LightGBM to reach a tie at two levels and a loss at the third.
 
+## TimesFM, zero-shot: the only model that did not lose
+
+Reported separately because it is scored on different origins. TimesFM's weights postdate
+most of this backtest, so it is judged on the **clean window**: 133 weekly origins,
+2023-12-04 to 2026-06-15, every forecast day after the latest documented pretraining data.
+The full-backtest numbers exist, are better still, and are not a result.
+
+| Level | TimesFM CRPS | minus ETS | minus LightGBM |
+|---|---|---|---|
+| City | 125.34 | **-24.34 [-29.84, -12.74]** | -6.85 [-12.37, +1.32] |
+| Borough | 31.79 | **-3.23 [-4.20, -1.43]** | -0.49 [-1.43, +0.70] |
+| Dispatch area | 8.571 | **-0.171 [-0.296, -0.040]** | +0.021 [-0.044, +0.109] |
+
+7. **A model trained on none of this data beats the model fitted to each series.** That is
+   the single most surprising number in the project. It is also not the claim it looks
+   like, because LightGBM beats ETS on this window too (city -17.49 [-30.15, -1.58]).
+   What separates both from ETS here is the conformal distribution, rebuilt from the last
+   52 origins: ETS's own quantiles cover 0.889 at the city on this window and 0.791 on the
+   last 40 origins, while the conformal models hold 0.89 to 0.90 throughout.
+8. **Against the fitted global model, zero-shot is a tie.** Every TimesFM minus LightGBM
+   interval on the clean window straddles zero. Pretraining on other people's series
+   bought as much as a gradient-boosted model trained on these ones, at no training cost
+   and with no calendar. That is the finding worth taking to another dataset.
+9. **Its own uncertainty is good without any help.** 80 percent nominal, from its own
+   deciles with no conformal step: 0.784, 0.784, 0.788 on the clean window, 0.792 at every
+   level on the full backtest. Only PatchTST does better, and PatchTST was trained here.
+
+### What the TimesFM windows disagree about
+
+`PLAN.md` section 2.7a set a test in advance: if TimesFM's skill is materially higher
+before the weights were published than after, that points to undocumented overlap. It is.
+Paired against LightGBM, at the city:
+
+| Window | Origins | TimesFM minus LightGBM | Origins won |
+|---|---:|---|---|
+| Full backtest, exposed | 911 | -12.82 [-18.34, -8.74] | 64.1% |
+| Between the pretraining cutoff and the release | 93 | -10.45 | 72.0% |
+| After the weights were published | 40 | +1.51 | 42.5% |
+
+The advantage shrinks as the origins move further from anything the weights could have
+absorbed, and on the last stretch it is gone. **Two explanations fit and 40 origins cannot
+separate them.** One is a leak: overlap with data up to the release that Google's
+documentation does not cover and the corpus check could not rule out. The other is
+staleness: TimesFM is frozen where LightGBM refits weekly, so any change in demand after
+September 2025 is something one model follows and the other cannot, and every model in this
+project scores worse on that stretch. **The clean-window result stands as reported, and the
+reader is entitled to know it is the average of a better stretch and a worse one.**
+
+Those last two rows carry no interval on purpose. The block bootstrap here lays each
+resample out as whole blocks of 28 origins, and on 40 origins it returned an interval for
+ETS's skill that did not contain its own point estimate. `docs/methods.md` has that
+diagnostic; the report now refuses to print an interval below four blocks.
+
 **As a rota decision** (illustrative costs, `inputs/decision.toml`), at the level the costs
 imply PatchTST staffs 448.8 units a day, the same as ETS to a tenth of a unit, and costs
 66.84 against ETS's 65.76: **1.6 percent more**, +1.08 [+0.43, +2.13]. It is a usable
@@ -91,8 +148,21 @@ widens with the service level, to +2.09 at 90 percent and +4.53 at 95.
   down less, and its city interval is the widest in the table. A second PatchTST seed is
   28 hours that has not been spent; the city column is where it would matter and the city
   column is already a tie.
-* **Not the whole neural question.** TimesFM is not built. Used zero-shot it is a different
-  kind of claim and is reported only on its clean window.
+* **Not that TimesFM is clean of the leak.** It is clean of the *documented* pretraining
+  data, which is what the clean window is built from. Google does not publish the Wikipedia
+  and Trends extracts, so the November 2023 cutoff for those rests on their word, and the
+  post-release window is the only stretch where nothing could have leaked by any reading.
+  On that stretch TimesFM is behind LightGBM. Forty origins cannot make that a finding, and
+  it is not treated as one in either direction.
+* **Not that TimesFM would hold up under a shift.** Both its windows fall entirely after
+  March 2020, so it contributes nothing to this project's coverage-through-a-shift claim,
+  and the single most likely reading of its decay on the last 40 origins is that a frozen
+  model cannot follow a change that a weekly refit can. That is the thing to test before
+  anyone puts a foundation model on a rota.
+* **Not that any of this is tuned.** TimesFM ran on the model card's own settings with the
+  project's window and horizon, one pass, no second configuration tried. That is the same
+  bar the other models were held to and it cuts both ways: a tuned TimesFM might be better,
+  and there is no evidence here that it would be.
 
 ## For `PLAN.md` section 9
 
@@ -106,3 +176,10 @@ than quietly rounded to "the plan was right".
 The sharper form of the candidate holds: LightGBM matches the neural models at the top two
 levels, so whatever gain was available came from learning across series and not from depth,
 and even that gain was zero against a well-fitted ETS.
+
+**TimesFM complicates the candidate rather than confirming it,** and that is worth saying
+plainly. The candidate is about *training* a neural model on your own series, and the
+project's answer to that is a clear no. The model that did not lose was not trained here at
+all. If there is a successor claim it is narrower and better supported: on this panel,
+weights learned from other people's series matched a gradient-boosted model fitted to these
+ones, at no training cost, on the origins that model could not have seen.

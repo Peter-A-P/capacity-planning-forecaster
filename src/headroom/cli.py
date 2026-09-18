@@ -54,7 +54,7 @@ from headroom.models import foundation
 from headroom.models.baselines import SeasonalNaive
 from headroom.reconcile.mint import ReconciledMedians
 from headroom.score import levels as lv
-from headroom.score.bootstrap import confidence_interval, skill_interval
+from headroom.score.bootstrap import BLOCK, confidence_interval, skill_interval
 from headroom.score.coverage import empirical_coverage
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -88,7 +88,7 @@ POINT_MODELS = frozenset(STORED_LEVELS)
 PROMISED_ROWS: Final[tuple[tuple[str, str], ...]] = (
     ("N-HiTS", "N-HiTS"),
     ("PatchTST", "PatchTST"),
-    ("TimesFM", "TimesFM, zero-shot (clean window only)"),
+    ("TimesFM", "TimesFM, zero-shot"),
 )
 
 
@@ -1172,6 +1172,13 @@ LEVEL_NAMES = {"city": "City", "borough": "Borough", "area": "Dispatch area"}
 #: Days in the rolling window the worst-coverage column is measured over.
 SHIFT_WINDOW_DAYS = 91
 
+#: Origins a window needs before a block-bootstrap interval is reported on it. Each
+#: resample is laid out as whole blocks, so a window of a few blocks resamples from almost
+#: nothing: on TimesFM's 40-origin cross-check window the interval came back not even
+#: containing its own point estimate (`docs/methods.md`). Four blocks is the floor, and
+#: below it the tables print the difference with no interval and say why.
+MIN_BOOTSTRAP_ORIGINS: Final[int] = 4 * BLOCK
+
 
 @app.command()
 def report(
@@ -1184,6 +1191,12 @@ def report(
     neural: Annotated[
         str, typer.Option(help="Comma-separated neural checkpoints.")
     ] = "N-HiTS-refit4",
+    zero_shot: Annotated[
+        str,
+        typer.Option(
+            "--zero-shot", help="Pretrained checkpoints, reported on their own windows."
+        ),
+    ] = foundation.NAME,
     step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
     window: Annotated[
         int, typer.Option(help="Training window; 0 expands.")
@@ -1199,11 +1212,18 @@ def report(
     covariance both exist, so every comparison in the tables is paired. Takes several
     minutes and a few gigabytes of memory, one checkpoint at a time.
 
+    A pretrained model named in ``--zero-shot`` is kept out of that table on purpose. Its
+    weights postdate most of the backtest, so its numbers there would not mean what the
+    other rows mean, and PLAN.md section 2.7a forbids pooling them. It gets its own table,
+    one block of rows per window, with the exposed window labelled as exposed.
+
     Args:
         statistical: Statistical models to choose the best from, by CRPS skill averaged
             over the three levels. The best is also reconciled and staffed from.
         boosting: The gradient-boosting model's checkpoint name.
         neural: Neural checkpoint names, such as ``N-HiTS-refit4``.
+        zero_shot: Pretrained checkpoints, scored on their own windows and never pooled
+            with the main table. Skipped where the checkpoint does not exist.
         step: Days between origins the checkpoints were built with.
         window: Trailing training window they were built with, or 0 for expanding.
         write: Write the tables into README.md between its report markers.
@@ -1294,27 +1314,75 @@ def report(
         demand[name] = _area_demand(quantiles, panel, start, service)
         del checkpoint, quantiles
 
+    # A pretrained model is scored on its own windows and never pooled with the table
+    # above, so it is built here rather than added to `others`.
+    zero_shot_rows: list[list[str]] = []
+    zero_shot_scored: set[str] = set()
+    zero_shot_seconds: dict[str, float] = {}
+    # Fitted models to difference against: the best statistical one and the global one. The
+    # neural checkpoints are left out because three difference columns is a table nobody
+    # reads, and the global model is the one that answers "did pretraining buy anything".
+    zero_shot_against = [best, *(name for name in others if _refit_every(name) is None)]
+    for name in _names(zero_shot):
+        if not (output_dir() / _checkpoint_name(name, step, origins)).exists():
+            continue
+        checkpoint = _complete_checkpoint(name, step, origins, hierarchy.n_nodes)
+        quantiles = _distribution(name, checkpoint.quantiles, actual, step)
+        zero_shot_seconds[name] = compute(checkpoint)
+        del checkpoint
+        windows: list[tuple[str, int]] = []
+        for label, first_day in foundation.WINDOWS:
+            at = [origin.number for origin in listed if origin.day >= first_day]
+            if at and max(at[0], start) < len(origins):
+                windows.append((label, max(at[0], start)))
+        windows.append(("Full backtest, exposed to the leak", start))
+        for label, first_origin in windows:
+            scores = score_forecasts(
+                name,
+                hierarchy,
+                origins,
+                quantiles[first_origin:],
+                actual[first_origin:],
+                lv.SCORING,
+                0.0,
+            )
+            zero_shot_rows += _window_rows(
+                label,
+                listed[first_origin].day,
+                scores,
+                _from_origin(naive, first_origin - start),
+                {
+                    reference: _from_origin(
+                        candidates[reference] if reference in candidates else others[reference],
+                        first_origin - start,
+                    )
+                    for reference in zero_shot_against
+                },
+            )
+            del scores
+        zero_shot_scored.add(_base_model(name))
+        del quantiles
+
     typer.echo("staffing")
     staffing = _staffing(demand, actual[start:], panel, service)
     window_origins = max(3, SHIFT_WINDOW_DAYS // step)
 
-    methods: list[tuple[str, Scores | None, float]] = [
+    methods: list[tuple[str, Scores, float]] = [
         ("Seasonal naive", naive, seconds["Seasonal naive"]),
         (f"Best statistical: {best}", candidates[best], seconds[best]),
     ]
     methods += [(_method_label(name), others[name], seconds[name]) for name in others]
     # Only promise a "not built" row for a network no checkpoint was reported for, so a
-    # model that has since been run cannot appear twice with contradictory rows.
+    # model that has since been run cannot appear twice with contradictory rows. A model
+    # reported on its own windows is built but cannot share this table, because its
+    # origins are not the origins every other row here is scored on.
     built = {_base_model(name) for name in others}
-    unbuilt = [label for network, label in PROMISED_ROWS if network not in built]
-    methods += [(label, None, 0.0) for label in unbuilt]
+    absent = _absent_rows(built, zero_shot_scored)
 
     skill_rows: list[list[str]] = []
     for label, scores, cost in methods:
-        if scores is None:
-            skill_rows.append([label, "not built", "", "", "", "", "", ""])
-            continue
         skill_rows += _skill_rows(label, scores, naive, cost, window_origins, listed, start)
+    skill_rows += [[label, note, "", "", "", "", "", ""] for label, note in absent]
 
     reconcile_rows = []
     for level, level_name in LEVEL_NAMES.items():
@@ -1382,9 +1450,59 @@ def report(
         if refits
         else ""
     )
-    missing = [network for network, _ in PROMISED_ROWS if network not in built]
+    missing = [
+        network
+        for network, _ in PROMISED_ROWS
+        if network not in built and network not in zero_shot_scored
+    ]
     verb = "is" if len(missing) == 1 else "are"
     unbuilt_note = f" {_listing(missing)} {verb} not built yet." if missing else ""
+
+    zero_shot_block: list[str] = []
+    if zero_shot_rows:
+        named = _listing(sorted(zero_shot_scored))
+        cost_note = _listing(
+            [
+                f"{name}, {tables.duration(zero_shot_seconds[name])}"
+                for name in zero_shot_seconds
+            ]
+        )
+        zero_shot_block = [
+            f"**{named}, pretrained and used zero-shot: the windows it can be judged on**",
+            "",
+            f"{named} is not in the table above, and the reason is the result. Its weights "
+            "were trained after most of these origins, on a corpus that contains the 2020 "
+            "period in other series, so a forecast it makes of 2020 is not the same kind of "
+            "claim as every other row's. It is scored here on three windows, **never "
+            "pooled**: the clean window, whose whole horizon falls after the latest "
+            "documented pretraining data; a shorter cross-check after the weights were "
+            "published, which is a subset of the same forecasts; and the full backtest, "
+            "which is labelled exposed and is not a result. It is trained on none of this "
+            "data at all, and it is given the same window, horizon and scoring grid as "
+            f"everything else. Inference over the full schedule: {cost_note}.",
+            "",
+            tables.markdown_table(
+                [
+                    "Window",
+                    "Origins",
+                    "Level",
+                    "CRPS",
+                    "CRPS skill",
+                    *(f"CRPS minus {_method_label(name)}" for name in zero_shot_against),
+                    "Coverage at 90% nominal",
+                ],
+                zero_shot_rows,
+            ),
+            "",
+            f"Its forecast is its median and the distribution scored here is conformal from "
+            "its own past errors, as LightGBM's is, because its own quantile head stops at "
+            "the 0.1 and 0.9 quantiles and this table reports 95 percent intervals. A window "
+            f"shorter than {MIN_BOOTSTRAP_ORIGINS} origins carries no bootstrap interval: "
+            f"the block length is {BLOCK} origins, and a window of a few blocks resamples "
+            "from too little to say anything. Those rows print the difference alone, and "
+            "direction is all they carry.",
+            "",
+        ]
 
     first, last = listed[start].day, listed[-1].day
     block = "\n".join(
@@ -1433,6 +1551,7 @@ def report(
             "fitted three at a time and each is given a third. LightGBM is the only model "
             f"given the holiday calendar.{refit_note}{unbuilt_note}",
             "",
+            *zero_shot_block,
             f"**Reconciliation: {best} with MinT**",
             "",
             f"Largest coherence breach over every origin and horizon step, in incidents: "
@@ -1620,6 +1739,113 @@ def _skill_rows(
                 tables.duration(seconds) if i == 0 else "",
             ]
         )
+    return rows
+
+
+def _absent_rows(built: set[str], own_windows: set[str]) -> list[tuple[str, str]]:
+    """The promised rows with no scores in the main table, and what each says instead.
+
+    PLAN.md section 1 promises a row per model. A model that has been run must never also
+    be listed as not built, and a model reported on its own windows is run: it is out of
+    the main table because its origins are not that table's origins, which is a different
+    statement from not existing and has to read as one.
+
+    Args:
+        built: Network names with a checkpoint in the main table.
+        own_windows: Network names reported on their own windows instead.
+
+    Returns:
+        ``(label, what the row says)`` for each promised network with no scores above.
+    """
+    return [
+        (label, "own windows, below" if network in own_windows else "not built")
+        for network, label in PROMISED_ROWS
+        if network not in built
+    ]
+
+
+def _difference_cell(values: npt.NDArray[np.float64], places: int, signed: bool = True) -> str:
+    """A paired difference with its interval, or the difference alone on a short window.
+
+    Args:
+        values: The paired per-origin differences.
+        places: Decimal places.
+        signed: Print a leading sign.
+
+    Returns:
+        The formatted cell. Below :data:`MIN_BOOTSTRAP_ORIGINS` origins the interval is
+        left out rather than printed misleadingly narrow, and the note under the table
+        says so.
+    """
+    from headroom.report import tables
+
+    point = float(values.mean())
+    if values.size < MIN_BOOTSTRAP_ORIGINS:
+        return f"{point:+.{places}f}" if signed else f"{point:.{places}f}"
+    return tables.number(
+        tables.Estimate.of(confidence_interval(values)), places=places, signed=signed
+    )
+
+
+def _window_rows(
+    window: str,
+    first_day: date,
+    scores: Scores,
+    naive: Scores,
+    references: dict[str, Scores],
+) -> list[list[str]]:
+    """One row per hierarchy level for one model on one window of origins.
+
+    Args:
+        window: How the table names the window.
+        first_day: The window's first origin.
+        scores: The model's scores on the window.
+        naive: Seasonal naive on the same origins.
+        references: Models to difference against, in column order, on the same origins.
+
+    Returns:
+        Three rows of cells, matching the header :func:`report` builds from the same
+        reference names.
+    """
+    from headroom.report import tables
+
+    nominal_at = list(scores.nominal).index(MAIN_NOMINAL)
+    rows = []
+    for i, (level, level_name) in enumerate(LEVEL_NAMES.items()):
+        crps = scores.by_origin(scores.crps, level)
+        hits = scores.by_origin(scores.hits[..., nominal_at].astype(np.float64), level)
+        cells = [
+            window if i == 0 else "",
+            f"{crps.size} from {first_day}" if i == 0 else "",
+            level_name,
+            _difference_cell(
+                crps, places=tables.decimals_for(float(crps.mean())), signed=False
+            ),
+        ]
+        if crps.size < MIN_BOOTSTRAP_ORIGINS:
+            cells.append(
+                f"{1.0 - crps.mean() / naive.by_origin(naive.crps, level).mean():+.3f}"
+            )
+        else:
+            cells.append(
+                tables.number(
+                    tables.Estimate.of(
+                        skill_interval(crps, naive.by_origin(naive.crps, level))
+                    ),
+                    places=3,
+                    signed=True,
+                )
+            )
+        for reference in references.values():
+            other = reference.by_origin(reference.crps, level)
+            cells.append(
+                _difference_cell(
+                    crps - other,
+                    places=min(3, tables.decimals_for(float(crps.mean())) + 1),
+                )
+            )
+        cells.append(_difference_cell(hits, places=3, signed=False))
+        rows.append(cells)
     return rows
 
 

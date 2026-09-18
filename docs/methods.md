@@ -1107,6 +1107,78 @@ unaided, is read from.
 that moved between runs would make every number here unreproducible, and this is the
 cheapest place to find that out.
 
+### Measured result, 2026-09-18: it does not lose, and the windows disagree about why
+
+**Run 2026-09-17 21:17 to 2026-09-18 04:16.** 964 origins, 6.95 hours wall clock, nothing
+fitted. Scored on three windows that are never pooled. Positive is worse in every
+difference column.
+
+**The clean window is the result:** 133 origins, 2023-12-04 to 2026-06-15, every forecast
+day after the latest documented pretraining data.
+
+| Level | TimesFM CRPS | Skill against seasonal naive | minus ETS | minus LightGBM | Coverage at 90% |
+|---|---|---|---|---|---|
+| City | 125.34 [111.09, 139.01] | +0.286 [+0.247, +0.302] | **-24.34 [-29.84, -12.74]** | -6.85 [-12.37, +1.32] | 0.895 |
+| Borough | 31.79 [29.21, 34.50] | +0.271 [+0.251, +0.279] | **-3.23 [-4.20, -1.43]** | -0.49 [-1.43, +0.70] | 0.895 |
+| Dispatch area | 8.571 [8.331, 8.813] | +0.263 [+0.258, +0.267] | **-0.171 [-0.296, -0.040]** | +0.021 [-0.044, +0.109] | 0.903 |
+
+A model trained on none of this data beats the best statistical model at every level, with
+intervals clear of zero, and **ties the global LightGBM model that was trained on it**. Two
+things stop that being a headline about pretraining. LightGBM beats ETS on this same window
+too (city -17.49 [-30.15, -1.58]), so part of what both gain is that a conformal
+distribution rebuilt from the last 52 origins tracks recent demand where ETS's own
+quantiles do not: ETS's city coverage here is 0.889 and falls to 0.791 on the last 40
+origins. And the window disagrees with itself, which is the next table.
+
+**The leak test `PLAN.md` section 2.7a asked for.** The plan said that if TimesFM's skill
+is materially higher before the weights were published than after, that points to
+undocumented overlap. It is. Paired against LightGBM, which is refitted at every origin and
+is the fairest comparison because both are scored the same conformal way:
+
+| Window | Origins | City | Borough | Dispatch area | Origins won at the city |
+|---|---:|---|---|---|---|
+| Full backtest, exposed | 911 | -12.82 [-18.34, -8.74] | -1.74 [-2.60, -1.12] | -0.114 [-0.196, -0.052] | 64.1% (584 of 911) |
+| Clean, after the pretraining data | 133 | -6.85 [-12.37, +1.32] | -0.49 [-1.43, +0.70] | +0.021 [-0.044, +0.109] | 63.2% (84 of 133) |
+| Between the two windows | 93 | -10.45 | -1.15 | -0.017 | 72.0% (67 of 93) |
+| Cross-check, after the weights were published | 40 | +1.51 | +1.06 | +0.110 | 42.5% (17 of 40) |
+
+The advantage shrinks as the origins move further from anything the weights could have
+absorbed, and on the post-release stretch it is gone. **Two explanations fit and this
+project cannot separate them.** One is the leak: undocumented overlap with data up to the
+release, which the corpus research could not rule out for the Wikipedia and Trends
+extracts. The other is staleness: TimesFM's weights are frozen while LightGBM refits every
+week, so any change in demand after 2025-09 is something one model can follow and the other
+cannot, and every model does score worse on that stretch. Forty origins cannot tell those
+apart, and neither reading is reported as the finding.
+
+**Why those two rows carry no interval.** The moving block bootstrap here lays each
+resample out as whole blocks of 28 origins, so a 40-origin window resamples from almost
+nothing. It does not fail loudly: asked for ETS's CRPS skill on that window it returned
+**+0.1126 [+0.1171, +0.1853]**, an interval that does not contain its own point estimate.
+The report now prints no interval below 112 origins, four blocks, and says so under the
+table. A narrow wrong interval is worse than none, because it reads as precision.
+
+**Its own deciles, the one interval it produces unaided.** No conformal step, 80 percent
+nominal, which is as far as its quantile head reaches:
+
+| Window | City | Borough | Dispatch area |
+|---|---|---|---|
+| Full backtest, exposed | 0.7923 [0.7803, 0.8052] | 0.7907 [0.7822, 0.8000] | 0.7924 [0.7873, 0.7976] |
+| Clean, after the pretraining data | 0.7836 [0.7363, 0.8147] | 0.7841 [0.7541, 0.8078] | 0.7876 [0.7775, 0.7954] |
+| Cross-check, after the weights were published | 0.7161 | 0.7361 | 0.7680 |
+
+Against a 0.80 target that is good calibration from a model that has never seen this
+series, and it decays on the most recent stretch in the same place the CRPS advantage does.
+The deciles never cross, checked over all 964 origins.
+
+**Cost, and why this one is a measurement.** Median 25.7 seconds an origin, so the
+published figure is 6.89 hours for the full schedule. The run shared the machine with
+another job for its first stretch and had it to itself afterwards: the first 100 origins
+have a median of 33.4 seconds and the last 100 of 25.4, and the run's own median of 25.7
+sits in the quiet regime, so the published number is not a busy-machine measurement. The
+quietest quarter implies 5.67 hours. Recorded inference time was 6.90 of the 6.95 hours of
+wall clock, so checkpointing cost 0.7 percent at `--save-every 10`.
+
 Sources: [TimesFM 2.5 model card](https://huggingface.co/google/timesfm-2.5-200m-pytorch),
 [TimesFM 3.0 model card](https://huggingface.co/google/timesfm-3.0-pytorch),
 [TimesFM 2.0 model card](https://huggingface.co/google/timesfm-2.0-500m-pytorch),

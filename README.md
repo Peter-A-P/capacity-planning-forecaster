@@ -11,16 +11,25 @@ defensible number on both, site by site, rolling up to the region.
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
 intervals and the statistical models (ETS, Theta, MSTL and AutoARIMA, 964 weekly origins
 each) are measured in [docs/methods.md](docs/methods.md), and so are the global LightGBM
-model, N-HiTS, PatchTST, MinT reconciliation and the staffing decision layer. The table
-below shows the best statistical model, which is ETS.
+model, N-HiTS, PatchTST, TimesFM, MinT reconciliation and the staffing decision layer. The
+table below shows the best statistical model, which is ETS.
 
 **Neither neural model earned its complexity, and they failed differently**
 ([docs/neural-verdict.md](docs/neural-verdict.md)). N-HiTS is beaten everywhere and its
 90 percent intervals cover 58 to 68 percent of outcomes. PatchTST is a good forecaster
 that ties ETS at the city and borough, loses narrowly at the dispatch areas, and costs
 about seventeen times as much to fit. AutoARIMA did not earn its cost either: five times
-ETS to finish third of the four statistical models. TimesFM and probabilistic
-reconciliation are not built yet, and their rows say so.
+ETS to finish third of the four statistical models.
+
+**The pretrained model is the one that did not lose, and the honest version of that is
+complicated.** TimesFM 2.5, trained on none of this data, matches the global LightGBM
+model on the clean window after its pretraining data ends, and both beat ETS there. It has
+its own table below rather than a row in the main one, because its weights postdate most
+of these origins and pooling the two would be meaningless. On the 40 origins after the
+weights were published, the one stretch nothing could have leaked into, it is about one
+percent behind LightGBM instead. Forty origins cannot settle that, and the verdict says so
+rather than picking the window that flatters it. Probabilistic reconciliation is still not
+built, and its row says so.
 
 The tables below are written by `headroom report` from the backtest's checkpoints and are
 never edited by hand. [docs/state.md](docs/state.md) is the working state of the build.
@@ -49,13 +58,31 @@ All numbers from `headroom report`: 911 weekly forecast origins, 2009-01-05 to 2
 | PatchTST, refitted every 13 weeks | City | +0.201 [+0.171, +0.224] | +0.205 [+0.171, +0.230] | 0.896 [0.884, 0.909] | 0.593 (2020-05-04) | 778 [743, 817] | 27.3 h |
 |  | Borough | +0.218 [+0.195, +0.235] | +0.219 [+0.193, +0.237] | 0.901 [0.892, 0.909] | 0.625 (2020-05-04) | 190 [183, 197] |  |
 |  | Dispatch area | +0.243 [+0.229, +0.252] | +0.243 [+0.229, +0.253] | 0.900 [0.895, 0.905] | 0.698 (2020-05-04) | 49.3 [48.2, 50.6] |  |
-| TimesFM, zero-shot (clean window only) | not built |  |  |  |  |  |  |
+| TimesFM, zero-shot | own windows, below |  |  |  |  |  |  |
 
 Skill is one minus the method's mean score over seasonal naive's, so higher is better and zero is no better than the baseline.
 
 **Coverage, and what it does and does not promise.** Seasonal naive (quantiles of its own past errors), the statistical models, N-HiTS and PatchTST, are scored on their own quantiles with no conformal step, so no coverage is guaranteed for them. LightGBM, global forecasts a median only, and its distribution is conformal, built from its own errors over the previous 52 origins. Conformal coverage holds on average over time and only if errors are exchangeable, which demand through a shift is not, so it is not promised in any one window. The worst window is the lowest coverage in a trailing 91-day window (13 weekly origins), dated by the last origin in it. It is the single worst stretch of one history, so it carries no bootstrap interval.
 
-**Fit time** is the median model time per origin times the 964 origins of the full schedule, on one desktop CPU (machine B in [docs/methods.md](docs/methods.md)); the median, so that time lost to other work or to the machine sleeping is not counted. The statistical models were fitted three at a time and each is given a third. LightGBM is the only model given the holiday calendar. The neural models are refitted on a schedule, N-HiTS every 4 and PatchTST every 13 origins, and each forecasts every origin from its latest weights. TimesFM is not built yet.
+**Fit time** is the median model time per origin times the 964 origins of the full schedule, on one desktop CPU (machine B in [docs/methods.md](docs/methods.md)); the median, so that time lost to other work or to the machine sleeping is not counted. The statistical models were fitted three at a time and each is given a third. LightGBM is the only model given the holiday calendar. The neural models are refitted on a schedule, N-HiTS every 4 and PatchTST every 13 origins, and each forecasts every origin from its latest weights.
+
+**TimesFM, pretrained and used zero-shot: the windows it can be judged on**
+
+TimesFM is not in the table above, and the reason is the result. Its weights were trained after most of these origins, on a corpus that contains the 2020 period in other series, so a forecast it makes of 2020 is not the same kind of claim as every other row's. It is scored here on three windows, **never pooled**: the clean window, whose whole horizon falls after the latest documented pretraining data; a shorter cross-check after the weights were published, which is a subset of the same forecasts; and the full backtest, which is labelled exposed and is not a result. It is trained on none of this data at all, and it is given the same window, horizon and scoring grid as everything else. Inference over the full schedule: TimesFM, 6.9 h.
+
+| Window | Origins | Level | CRPS | CRPS skill | CRPS minus ETS | CRPS minus LightGBM, global | Coverage at 90% nominal |
+|---|---|---|---|---|---|---|---|
+| Clean: whole horizon after the pretraining data | 133 from 2023-12-04 | City | 125 [111, 139] | +0.286 [+0.247, +0.302] | -24.3 [-29.8, -12.7] | -6.9 [-12.4, +1.3] | 0.895 [0.862, 0.917] |
+|  |  | Borough | 31.8 [29.2, 34.5] | +0.271 [+0.251, +0.279] | -3.23 [-4.20, -1.43] | -0.49 [-1.43, +0.70] | 0.895 [0.878, 0.906] |
+|  |  | Dispatch area | 8.57 [8.33, 8.81] | +0.263 [+0.258, +0.267] | -0.171 [-0.296, -0.040] | +0.021 [-0.044, +0.109] | 0.903 [0.896, 0.908] |
+| Cross-check: after the weights were published | 40 from 2025-09-15 | City | 152 | +0.299 | -40.5 | +1.5 | 0.875 |
+|  |  | Borough | 36.9 | +0.273 | -5.35 | +1.06 | 0.874 |
+|  |  | Dispatch area | 9.05 | +0.265 | -0.340 | +0.110 | 0.893 |
+| Full backtest, exposed to the leak | 911 from 2009-01-05 | City | 121 [113, 132] | +0.268 [+0.252, +0.282] | -14.5 [-16.6, -11.4] | -12.8 [-18.3, -8.7] | 0.901 [0.890, 0.913] |
+|  |  | Borough | 30.2 [28.6, 32.2] | +0.265 [+0.254, +0.275] | -2.23 [-2.55, -1.78] | -1.74 [-2.60, -1.12] | 0.902 [0.894, 0.911] |
+|  |  | Dispatch area | 8.17 [7.91, 8.51] | +0.262 [+0.255, +0.267] | -0.107 [-0.144, -0.066] | -0.114 [-0.196, -0.052] | 0.903 [0.897, 0.910] |
+
+Its forecast is its median and the distribution scored here is conformal from its own past errors, as LightGBM's is, because its own quantile head stops at the 0.1 and 0.9 quantiles and this table reports 95 percent intervals. A window shorter than 112 origins carries no bootstrap interval: the block length is 28 origins, and a window of a few blocks resamples from too little to say anything. Those rows print the difference alone, and direction is all they carry.
 
 **Reconciliation: ETS with MinT**
 
