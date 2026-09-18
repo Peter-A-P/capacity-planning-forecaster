@@ -56,6 +56,7 @@ from headroom.reconcile.mint import ReconciledMedians
 from headroom.score import levels as lv
 from headroom.score.bootstrap import BLOCK, confidence_interval, skill_interval
 from headroom.score.coverage import empirical_coverage
+from headroom.types import Level
 
 app = typer.Typer(add_completion=False, help=__doc__)
 data_app = typer.Typer(help="Fetch and check the demand data.")
@@ -1178,11 +1179,161 @@ def score(
         _print_scores(scores, baseline_scores, paired)
 
 
+#: Where the charts are written, and the period they shade as the demand shift.
+CHARTS = Path("docs/charts")
+SHIFT = (date(2020, 3, 1), date(2020, 6, 1))
+
+
+@app.command()
+def charts(
+    model: Annotated[str, typer.Option(help="The model the fan chart draws.")] = "ETS",
+    alpha: Annotated[
+        str, typer.Option(help="Target miscoverages for the coverage chart.")
+    ] = "0.20,0.10,0.05",
+    level: Annotated[
+        str, typer.Option(help="Hierarchy level for the coverage chart.")
+    ] = "city",
+    horizon_step: Annotated[int, typer.Option(help="Days ahead the fan chart draws.")] = 14,
+    first_day: Annotated[str, typer.Option(help="First day of the fan chart.")] = "2019-09-01",
+    last_day: Annotated[str, typer.Option(help="Last day of the fan chart.")] = "2020-09-01",
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+    out: Annotated[str, typer.Option(help="Directory the PNGs are written to.")] = str(CHARTS),
+) -> None:
+    """Draw the coverage chart and the fan chart `PLAN.md` section 1 promises.
+
+    The coverage chart wraps seasonal naive in each conformal method at each nominal level
+    and plots trailing coverage against nominal, with the mean width of the same intervals
+    underneath, because a method reaches nominal trivially by being wide enough. This is
+    the picture of the project's headline finding: adaptive conformal cannot widen past
+    the largest nonconformity score in its calibration window, so it does not recover
+    inside the 2020 shift however fast it adapts.
+
+    The fan chart draws one finished model's bands at a fixed horizon step against what
+    happened, one panel per hierarchy level, over a window that contains the shift.
+
+    Args:
+        model: The model whose checkpoint the fan chart draws.
+        alpha: Comma-separated target miscoverages, so 0.10 is a 90 percent interval.
+        level: Hierarchy level the coverage chart measures.
+        horizon_step: Days ahead the fan chart draws, between 1 and the horizon.
+        first_day: First target day of the fan chart, ISO format.
+        last_day: Last target day of the fan chart, ISO format.
+        step: Days between origins.
+        window: Trailing training window in days, or 0 to let it expand.
+        out: Directory the PNGs are written to.
+
+    Raises:
+        typer.Exit: A checkpoint is missing or incomplete, or the options select no days.
+    """
+    from headroom.report.charts import CoverageSeries, coverage_chart, fan_chart
+
+    panel, origins = _schedule(step, window)
+    listed = list(origins)
+    directory = Path(out)
+    window_origins = max(3, SHIFT_WINDOW_DAYS // step)
+
+    typer.echo("running seasonal naive for the coverage chart")
+    naive = run(SeasonalNaive(), "Seasonal naive", panel.values, panel.hierarchy, origins)
+    series: list[CoverageSeries] = []
+    for target in [float(a) for a in _names(alpha)]:
+        # The legend carries the method, not its alpha: each row of the chart is one
+        # nominal level and says so on its own axis, so repeating it truncates the labels
+        # and tells the reader nothing.
+        for method, label in (
+            (SplitConformal(target), "split"),
+            (AdaptiveConformal(target, gamma=0.05), "adaptive, gamma 0.05"),
+            (AggregatedConformal(target), "aggregated, 6 experts"),
+        ):
+            result = apply(method, naive, panel.values, target)
+            series.append(
+                CoverageSeries(
+                    method=label,
+                    nominal=1.0 - target,
+                    coverage=result.coverage_by_origin(level),
+                    width=result.width_by_origin(level),
+                )
+            )
+            typer.echo(f"  {1 - target:.0%} {method.name[:44]}: {result.coverage(level):.4f}")
+            del result
+
+    written = coverage_chart(
+        series,
+        [origin.day for origin in listed],
+        directory / "coverage.png",
+        window=window_origins,
+        level_name=level,
+        shift=SHIFT,
+    )
+    typer.echo(f"wrote {written}")
+    # The backtest and its conformal wrappers are hundreds of megabytes and the fan chart
+    # needs none of them, so they go before a checkpoint of the same size is opened.
+    del naive, series
+
+    checkpoint = _complete_checkpoint(model, step, origins, panel.hierarchy.n_nodes)
+    quantiles = _distribution(model, checkpoint.quantiles, actual_of(panel, origins), step)
+    if not 1 <= horizon_step <= origins.horizon:
+        typer.echo(f"horizon step {horizon_step} is outside 1 to {origins.horizon}")
+        raise typer.Exit(code=1)
+    wanted = (date.fromisoformat(first_day), date.fromisoformat(last_day))
+    # One row per origin, read at a fixed horizon step, so the panels are a series through
+    # time rather than a single origin's fourteen days.
+    rows = [
+        origin.number
+        for origin in listed
+        if wanted[0] <= panel.days[origin.index + horizon_step] <= wanted[1]
+        and np.isfinite(quantiles[origin.number]).all()
+    ]
+    if not rows:
+        typer.echo(f"no origin forecasts a day between {wanted[0]} and {wanted[1]}")
+        raise typer.Exit(code=1)
+    picked = [panel.hierarchy.rows_at(name)[0] for name in LEVEL_NAMES]
+    labels = [
+        f"{LEVEL_NAMES[name]}: {panel.hierarchy.nodes[row]}"
+        for name, row in zip(LEVEL_NAMES, picked, strict=True)
+    ]
+    # Three series at one horizon step out of 37 series at fourteen: take the slice and let
+    # the checkpoint go before drawing anything.
+    bands = quantiles[np.ix_(rows, picked)][:, :, horizon_step - 1, :].copy()
+    del checkpoint, quantiles
+    written = fan_chart(
+        bands,
+        lv.SCORING,
+        np.stack([panel.values[picked, listed[row].index + horizon_step] for row in rows]),
+        [panel.days[listed[row].index + horizon_step] for row in rows],
+        labels,
+        directory / "fan.png",
+        horizon_step=horizon_step,
+        shift=SHIFT,
+    )
+    typer.echo(f"wrote {written}")
+
+
+def actual_of(panel: Panel, origins: Origins) -> npt.NDArray[np.float64]:
+    """Stack what happened over every origin's horizon.
+
+    Args:
+        panel: The panel.
+        origins: The schedule.
+
+    Returns:
+        Shape ``(n_origins, n_nodes, horizon)``.
+    """
+    return np.stack([panel.values[:, origin.target] for origin in origins])
+
+
 #: The file `headroom report` writes its tables into.
 README = Path("README.md")
 
-#: Hierarchy levels in table order, with the names the tables use.
-LEVEL_NAMES = {"city": "City", "borough": "Borough", "area": "Dispatch area"}
+#: Hierarchy levels in table order, with the names the tables use. Typed as the hierarchy's
+#: own level literals so that a key can be handed straight to ``rows_at``.
+LEVEL_NAMES: Final[dict[Level, str]] = {
+    "city": "City",
+    "borough": "Borough",
+    "area": "Dispatch area",
+}
 
 #: Days in the rolling window the worst-coverage column is measured over.
 SHIFT_WINDOW_DAYS = 91

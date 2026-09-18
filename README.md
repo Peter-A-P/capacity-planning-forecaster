@@ -131,6 +131,44 @@ Inputs are illustrative and replaceable ([inputs/decision.toml](inputs/decision.
 |  | PatchTST, refitted every 13 weeks | 490.2 [475.9, 503.9] | 87.52 [84.67, 91.52] | +4.53 [+2.92, +6.22] |
 <!-- report:end -->
 
+## Coverage through a real shift, which is the finding
+
+![Rolling coverage at the city against nominal, at three nominal levels, for split,
+adaptive and aggregated conformal, with the mean width of the same intervals under each
+panel. All three collapse in March 2020 and the widths only rise afterwards.](docs/charts/coverage.png)
+
+Written by `headroom charts`. Each panel is trailing coverage over 13 weekly origins at one
+nominal level, with the width that produced it underneath, because a method reaches nominal
+trivially by being wide enough to cover anything.
+
+**What the picture says that the table cannot.** Over the whole period every method sits
+near nominal. In March 2020 all three fall off a cliff together, to 0.47 at the 80 percent
+level, and the widths do not rise until after the fall. Adaptive conformal is meant to be
+the one that recovers, and it does not: it **cannot widen past the largest nonconformity
+score in its calibration window**, and the worst residual of the shift was larger than
+anything in the previous year. It ran out of room rather than being too slow.
+[docs/methods.md](docs/methods.md) has the measurement, and the remedy it does not attempt
+is named there rather than quietly tried.
+
+**The conformal assumption, stated beside the chart.** These intervals are calibrated on
+past errors and their guarantee is exchangeability, which a demand series does not have.
+Split conformal promises coverage on average over a period in which the error distribution
+does not change. Adaptive conformal promises coverage **on average over time**, not in any
+particular window, which is precisely why a chart of particular windows is the honest way
+to show it. No coverage is promised for March 2020 by any method here, and none was
+delivered.
+
+![Forecast bands 14 days ahead against what happened, at the city, a borough and a dispatch
+area, through the 2020 shift. The outcome leaves the 95 percent band entirely in late March
+and the bands follow it two weeks later, by which time the outcome has fallen below
+them.](docs/charts/fan.png)
+
+The same failure in the units a planner counts. The bands are ETS's, 14 days ahead. Demand
+leaves the 95 percent band altogether in late March 2020; the bands chase it up two weeks
+later, which is exactly the forecast horizon; and by the time they arrive the outcome has
+dropped through the bottom. A 14-day forecast cannot see a shift that happens inside its
+own horizon, and no amount of interval calibration changes that.
+
 ## What this does not do
 
 - It does not report MAE as the result. A point forecast cannot be scored on the thing that

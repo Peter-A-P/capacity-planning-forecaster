@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 7.
 
-**277 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**287 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -33,6 +33,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
 | `test_hierarchy.py` | 14 | The summing matrix and coherence |
 | `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
+| `test_charts.py` | 10 | The trailing window, the refusals that stop a series being drawn against the wrong dates, and that a real PNG appears |
 | `test_report.py` | 42 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
 
 ### Built and measured
@@ -53,8 +54,8 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 Every model named in `PLAN.md` section 1 is now built and scored, and so is the whole
 reconciliation. The first entries are here because the verdict on them is the point, not
-the code. What is genuinely not built is the charts, conformal on the reconciled forecasts,
-and the dashboard.
+the code. What is genuinely not built is conformal on the reconciled forecasts, and the
+dashboard, which waits on project 01's static pattern.
 
 - **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
   scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
@@ -97,7 +98,7 @@ and the dashboard.
   (illustrative). At the cost-implied 80 percent, ETS costs 65.76 a day against seasonal
   naive's 85.13; LightGBM ties ETS at 80 and costs 15 percent more at 95. N-HiTS costs
   81.92 at 80 percent, 25 percent more than ETS.
-- **Report command: done 2026-09-15; charts not built.** `headroom report` scores every
+- **Report command: done 2026-09-15.** `headroom report` scores every
   finished checkpoint on origins 53 to 963, picks the best statistical model by CRPS skill
   averaged over the levels (ETS +0.214, Theta +0.204, AutoARIMA +0.197, MSTL +0.098),
   reconciles and staffs
@@ -105,10 +106,23 @@ and the dashboard.
   minutes. Its numbers reproduce `score`, `reconcile` and `decide` exactly; `decide` now
   shares its staffing helpers. Rerun it whenever a checkpoint changes. A model named in
   `--zero-shot` gets its own windowed table instead of a row in the main one, because its
-  origins are not the main table's origins. The fan and coverage charts are still to build.
-- **Dashboard.** Deliberately held until project 01 builds the static decision-app pattern
-  in its week 7 (Oct 19 to 25 2026), so 08 reuses it rather than inventing it. Peter's
-  call, recorded in `PLAN.md`.
+  origins are not the main table's origins.
+- **Charts: done 2026-09-18.** `headroom charts` writes `docs/charts/coverage.png` and
+  `docs/charts/fan.png`, embedded in the README with the conformal assumption stated beside
+  them. The coverage chart is three nominal levels of trailing coverage with the widths
+  underneath, because coverage alone can be reached by widening; it is the picture of
+  finding 1 below. The fan chart is ETS 14 days ahead through the shift. About 12 minutes,
+  most of it the seasonal naive rerun and the nine conformal applications.
+- **Dashboard.** Deliberately held until project 01 builds the static decision-app pattern,
+  so 08 reuses it rather than inventing it. Peter's call, recorded in `PLAN.md`.
+  **Unblocked 2026-09-18:** 01 shipped ahead of its week 7 slot and its repository is
+  public, so the pattern can be read. It is `demo/` in that repository: a hand-written
+  `index.html`, `style.css` and a few plain `.js` files against precomputed JSON under
+  `demo/data/`, self-hosted fonts, its own `staticwebapp.config.json`, built by
+  `src/itx/demo/build.py` and served locally by `serve.py`, with `tests/test_demo.py`
+  checking the built output. That is the shape to copy here: `headroom export` writes the
+  JSON, `dashboard/` holds the static site, and the JSON validates against a schema
+  (`PLAN.md` section 5). Still after the two weeks, per the plan.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---

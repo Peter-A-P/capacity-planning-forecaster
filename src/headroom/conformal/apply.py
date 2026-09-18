@@ -111,6 +111,25 @@ class ConformalScores:
         with np.errstate(invalid="ignore"):
             return np.where(total > 0, covered_count / np.maximum(total, 1.0), np.nan)
 
+    def width_by_origin(self, level: str | None = None) -> npt.NDArray[np.float64]:
+        """Mean interval width at each origin, for the chart that sits under coverage.
+
+        Coverage alone cannot be read: a method can reach nominal by being wide enough to
+        cover anything. The two are plotted together for that reason.
+
+        Args:
+            level: Restrict to one hierarchy level. All nodes if omitted.
+
+        Returns:
+            One mean width per origin, ``nan`` where no interval was valid.
+        """
+        widths = np.asarray(self._select(self.widths, level), dtype=np.float64)
+        valid = np.asarray(self._select(self.valid, level), dtype=np.bool_)
+        total = valid.sum(axis=(1, 2)).astype(np.float64)
+        summed = np.where(valid, np.nan_to_num(widths), 0.0).sum(axis=(1, 2))
+        with np.errstate(invalid="ignore"):
+            return np.where(total > 0, summed / np.maximum(total, 1.0), np.nan)
+
     def _select(
         self, values: npt.NDArray[np.generic], level: str | None
     ) -> npt.NDArray[np.generic]:
