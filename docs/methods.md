@@ -552,12 +552,70 @@ numbers below are on origins 53 to 963.
   of a year of errors needed real shrinking but was far from useless.
 * The whole reconciliation, 911 origins by 14 steps, took 5 seconds.
 
+### Probabilistic reconciliation: every draw coherent, measured 2026-09-18
+
+`headroom.reconcile.paths`. The section above reconciles the median and shifts each node's
+quantiles with it, which makes the medians coherent and says nothing about the rest of the
+distribution. This makes the distribution itself out of coherent pieces: each of the 52
+error vectors in the window is a vector over all 37 nodes at once, so adding it to the base
+forecast gives an incoherent future, and putting that through the same projection ``S G``
+gives a coherent one. The distribution is the empirical distribution of those 52 paths.
+
+**Coherence, which is the claim.** The base forecasts breach the summing constraints by up
+to **514.8 incidents**. Every path, at every origin and horizon step, is coherent to
+**5.46e-12**. That is the `PLAN.md` deliverable of coherence verified numerically at every
+origin, now over the whole distribution rather than its median.
+
+**What it costs and what it buys, on ETS.** 911 origins, paired against unreconciled ETS:
+
+| Level | MinT: change in CRPS | MinT paths: change in CRPS | ETS coverage | MinT | MinT paths |
+|---|---|---|---|---|---|
+| City | -7.05 [-8.24, -4.80] | -6.33 [-8.09, -3.40] | 0.918 | 0.932 | **0.901** |
+| Borough | -0.97 [-1.13, -0.69] | -0.53 [-0.77, -0.12] | 0.911 | 0.919 | **0.900** |
+| Dispatch area | +0.007 [-0.009, +0.019] | +0.170 [+0.154, +0.190] | 0.904 | 0.904 | 0.901 |
+
+The two reconciliations buy about the same CRPS at the city. They differ in where the
+spread comes from, and that is the whole difference: shifting keeps ETS's own quantiles,
+which over-cover, and reconciling the distribution replaces them with realised errors, which
+do not. **Probabilistic reconciliation is the only thing in this project that brings ETS's
+coverage to nominal at all three levels at once.** It pays for that at the dispatch areas,
+where it is 2 percent worse on CRPS than leaving the spread alone.
+
+**On LightGBM it is close to free.** A model whose base distribution is already conformal
+has nothing to lose from having its spread replaced by realised errors, and the result is
+the largest reconciliation gain in the project:
+
+| Level | Change in CRPS | Coverage before | Coverage after | Mean width before | after |
+|---|---|---|---|---|---|
+| City | **-8.42 [-10.40, -6.88]** | 0.897 | 0.897 | 839 | 786 |
+| Borough | -0.98 [-1.15, -0.83] | 0.899 | 0.897 | 200 | 192 |
+| Dispatch area | +0.014 [+0.007, +0.024] | 0.903 | 0.900 | 51.1 | 50.7 |
+
+Better at the top two levels, unchanged at the leaves, narrower everywhere, calibration
+held. This also closes a gap the earlier section recorded: the paths need only a median, so
+a median-only model is reconciled the same way as any other.
+
+**In the rota it costs a little.** Staffing from the coherent distribution at the
+cost-implied 80 percent costs 66.53 a day against plain ETS's 65.76, and at 95 percent
+94.88 against 82.99. The coherent distribution's upper tail at a dispatch area is wider
+than ETS's own, so it staffs more, and at a high service level that is paid for in idle
+units. Better calibrated is not the same as cheaper, and the decision table is where that
+shows.
+
+**Two things it deliberately does not do.** It does not floor the paths at zero: clipping
+breaks the coherence the paths exist for, so they are left alone and the cost is measured
+instead. 0.0013 percent of ETS's path values fall below zero and none of LightGBM's do.
+And its marginal quantiles do not sum, which is correct rather than a defect: the boroughs
+do not have their bad days together, so the city's 90th percentile is below the sum of
+theirs. `tests/test_paths.py` asserts that they do not sum, so that nobody later "fixes"
+it into something false about any real hierarchy.
+
 ### What it does not do yet
 
-Only medians are reconciled; the quantiles are shifted, not reconciled, and quantiles do not
-sum in general, so no claim is made about them. The probabilistic reconciliation in
-`PLAN.md` (coherent sample paths) is not built, and neither is conformal on the reconciled
-forecasts. LightGBM, which stores a median, is not reconciled yet.
+Conformal on the reconciled forecasts is not built. The paths already take their spread
+from realised out-of-sample errors, so what is left is the narrower question of whether an
+adaptive step on top of them adds anything, rather than the original one of where any
+spread comes from at all.
 
 ---
 

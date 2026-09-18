@@ -5,7 +5,7 @@ ranges that actually hold when conditions shift, turned into a staffing number a
 service level. Overstaffing costs money; understaffing costs patients. This puts a
 defensible number on both, site by site, rolling up to the region.
 
-**Status: building,** week 1 of two, started 2026-09-12. The plan is in
+**Status: building,** week 2 of two, started 2026-09-12. The plan is in
 [PLAN.md](PLAN.md): a two-week build on public demand series, everything on a desktop CPU.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
@@ -28,8 +28,14 @@ its own table below rather than a row in the main one, because its weights postd
 of these origins and pooling the two would be meaningless. On the 40 origins after the
 weights were published, the one stretch nothing could have leaked into, it is about one
 percent behind LightGBM instead. Forty origins cannot settle that, and the verdict says so
-rather than picking the window that flatters it. Probabilistic reconciliation is still not
-built, and its row says so.
+rather than picking the window that flatters it.
+
+**The forecasts are coherent as a distribution, not just as a median.** Every draw of the
+reconciled distribution sums correctly across all 37 series at once, so a decision taken
+over the whole hierarchy is taken on one consistent future. It buys calibration (ETS's 90
+percent intervals go from covering 0.918 to 0.901) and it is not free: at the dispatch
+areas it is slightly worse on CRPS than moving the quantiles with the median, and it staffs
+a little more. Both numbers are in the table.
 
 The tables below are written by `headroom report` from the backtest's checkpoints and are
 never edited by hand. [docs/state.md](docs/state.md) is the working state of the build.
@@ -84,17 +90,17 @@ TimesFM is not in the table above, and the reason is the result. Its weights wer
 
 Its forecast is its median and the distribution scored here is conformal from its own past errors, as LightGBM's is, because its own quantile head stops at the 0.1 and 0.9 quantiles and this table reports 95 percent intervals. A window shorter than 112 origins carries no bootstrap interval: the block length is 28 origins, and a window of a few blocks resamples from too little to say anything. Those rows print the difference alone, and direction is all they carry.
 
-**Reconciliation: ETS with MinT**
+**Reconciliation: ETS with MinT, two ways**
 
-Largest coherence breach over every origin and horizon step, in incidents: 514.8 before reconciling, 0.0e+00 after.
+Base forecasts made one series at a time do not sum: the largest breach of the summing constraints is 514.8 incidents. Both reconciliations close it to 5.5e-12, and **MinT paths closes it over every draw of the distribution**, not only the median.
 
-| Level | CRPS, ETS | CRPS, ETS + MinT | Change from reconciling | Skill of reconciling |
-|---|---|---|---|---|
-| City | 135 [127, 145] | 128 [120, 139] | -7.1 [-8.2, -4.8] | +0.052 [+0.034, +0.062] |
-| Borough | 32.4 [30.7, 34.4] | 31.4 [29.7, 33.6] | -0.97 [-1.13, -0.69] | +0.030 [+0.021, +0.035] |
-| Dispatch area | 8.27 [7.99, 8.62] | 8.28 [8.01, 8.62] | +0.007 [-0.009, +0.019] | -0.001 [-0.002, +0.001] |
+| Level | CRPS, ETS | MinT: change in CRPS | MinT: coverage at 90% | MinT paths: change in CRPS | MinT paths: coverage at 90% |
+|---|---|---|---|---|---|
+| City | 135 [127, 145] | -7.1 [-8.2, -4.8] | 0.932 [0.919, 0.944] | -6.3 [-8.1, -3.4] | 0.901 [0.889, 0.913] |
+| Borough | 32.4 [30.7, 34.4] | -0.97 [-1.13, -0.69] | 0.919 [0.909, 0.929] | -0.53 [-0.77, -0.12] | 0.900 [0.891, 0.910] |
+| Dispatch area | 8.27 [7.99, 8.62] | +0.007 [-0.009, +0.019] | 0.904 [0.898, 0.910] | +0.170 [+0.154, +0.190] | 0.901 [0.895, 0.907] |
 
-Only the medians are reconciled; each node's quantiles move with its median. Probabilistic reconciliation is not built yet.
+**MinT** reconciles the median and moves each node's quantiles with it, so the medians are coherent and the spread is still the base model's. **MinT paths** is the probabilistic reconciliation: each of the 52 error vectors in the window is added to the base forecast and put through the same projection, so every draw is coherent across all 37 series at once and the distribution is read off those draws. Its quantiles still do not sum, and they are not supposed to: the boroughs do not have their bad days together, so the city's 90th percentile is below the sum of theirs. What is coherent is every draw, which is what a decision taken over the whole hierarchy needs. Paths are not floored at zero, because that would break the coherence they exist for; 0.0013% of path values fall below zero.
 
 **The rota: staffing every dispatch area, priced against an oracle**
 
@@ -105,18 +111,21 @@ Inputs are illustrative and replaceable ([inputs/decision.toml](inputs/decision.
 | 80%, implied by the costs | Seasonal naive | 457.6 [443.9, 470.6] | 85.13 [82.74, 87.98] | +19.37 [+18.84, +19.88] |
 |  | ETS | 448.8 [435.3, 461.9] | 65.76 [63.48, 68.60] | reference |
 |  | ETS + MinT | 448.8 [435.3, 461.9] | 65.79 [63.57, 68.52] | +0.03 [-0.11, +0.14] |
+|  | ETS + MinT paths | 449.5 [436.0, 462.3] | 66.53 [64.41, 69.19] | +0.77 [+0.55, +0.98] |
 |  | LightGBM, global | 449.3 [435.9, 462.0] | 65.76 [63.38, 68.94] | +0.00 [-0.57, +0.69] |
 |  | N-HiTS, refitted every 4 weeks | 433.3 [420.2, 446.1] | 81.92 [78.67, 86.42] | +16.16 [+14.65, +18.14] |
 |  | PatchTST, refitted every 13 weeks | 448.8 [435.2, 461.7] | 66.84 [64.23, 70.55] | +1.08 [+0.43, +2.13] |
 | 90% | Seasonal naive | 483.2 [469.1, 496.6] | 91.18 [88.92, 93.94] | +18.91 [+18.11, +19.57] |
 |  | ETS | 468.7 [455.0, 482.4] | 72.27 [70.05, 75.09] | reference |
 |  | ETS + MinT | 468.8 [454.9, 482.4] | 72.29 [70.11, 75.06] | +0.02 [-0.09, +0.10] |
+|  | ETS + MinT paths | 470.8 [456.8, 483.9] | 73.98 [71.91, 76.77] | +1.71 [+1.11, +2.23] |
 |  | LightGBM, global | 470.3 [456.7, 483.4] | 73.39 [70.86, 76.87] | +1.12 [-0.14, +2.43] |
 |  | N-HiTS, refitted every 4 weeks | 447.8 [434.4, 460.8] | 77.08 [74.04, 81.59] | +4.81 [+3.16, +6.85] |
 |  | PatchTST, refitted every 13 weeks | 470.8 [456.9, 484.2] | 74.36 [71.67, 78.20] | +2.09 [+0.93, +3.42] |
 | 95% | Seasonal naive | 504.9 [490.6, 518.6] | 104.42 [102.12, 107.23] | +21.43 [+20.24, +22.35] |
 |  | ETS | 485.1 [470.9, 499.1] | 82.99 [80.59, 85.93] | reference |
 |  | ETS + MinT | 485.2 [470.9, 499.2] | 83.01 [80.66, 85.89] | +0.02 [-0.08, +0.13] |
+|  | ETS + MinT paths | 498.7 [484.8, 512.2] | 94.88 [91.60, 99.21] | +11.89 [+9.66, +14.96] |
 |  | LightGBM, global | 499.2 [484.9, 513.3] | 95.45 [90.64, 102.00] | +12.46 [+8.44, +17.90] |
 |  | N-HiTS, refitted every 4 weeks | 461.9 [448.3, 475.1] | 77.85 [75.00, 82.16] | -5.14 [-6.92, -3.04] |
 |  | PatchTST, refitted every 13 weeks | 490.2 [475.9, 503.9] | 87.52 [84.67, 91.52] | +4.53 [+2.92, +6.22] |

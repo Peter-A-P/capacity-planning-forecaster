@@ -117,8 +117,22 @@ checkpoints do not hold; the shrinkage arithmetic is tested equal to the library
 `mint_shrink`. ``W`` comes from each model's out-of-sample errors at the same horizon step
 over the previous 52 origins, not in-sample residuals. Quantiles move with their median.
 On ETS: coherence error from 515 incidents to 0, city CRPS -7.05 [-8.24, -4.80], borough
--0.97 [-1.13, -0.69], dispatch area +0.007 [-0.009, +0.019]. The probabilistic
-reconciliation and conformal on the reconciled forecasts are still to build.
+-0.97 [-1.13, -0.69], dispatch area +0.007 [-0.009, +0.019].
+
+**As built, 2026-09-18 (probabilistic).** `headroom.reconcile.paths`. One deviation from the
+line above, recorded rather than made quietly: it says "bootstrap of reconciled in-sample
+errors", and the 52 error vectors in the window are used **once each rather than resampled
+with replacement**. Resampling adds no information to those 52 and would cost the order
+statistic convention the rest of this package uses, so the full sample is used and there is
+no seed to record. The errors are the same out-of-sample ones ``W`` is estimated from, for
+the reasons above. Every path is coherent to 5e-12 at every origin, against a base breach
+of 515 incidents; the marginal quantiles still do not sum, which is correct and is asserted
+in `tests/test_paths.py` so that nobody later "fixes" it. Paths are not floored at zero,
+because clipping breaks coherence; 0.0013 percent of ETS's path values fall below zero.
+Because the paths need only a median, this also reconciles the median-only models, which
+closes the gap `docs/state.md` recorded. Conformal on the reconciled forecasts is still to
+build: the paths already take their spread from realised errors, so what is left is the
+narrower question of whether an adaptive step on top of them adds anything.
 
 ### 2.6 The decision layer is a newsvendor
 

@@ -684,17 +684,30 @@ def zeroshot(
 
 @app.command()
 def reconcile(
-    model: Annotated[str, typer.Option(help="A model with a quantile checkpoint.")] = "ETS",
+    model: Annotated[str, typer.Option(help="A model with a finished checkpoint.")] = "ETS",
     step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
     window: Annotated[
         int, typer.Option(help="Training window; 0 expands.")
     ] = TRAIN_WINDOW_DAYS,
 ) -> None:
-    """Reconcile a model's medians with MinT and report coherence and the change in CRPS.
+    """Reconcile a model with MinT, both ways, and report coherence and the change in CRPS.
 
     ``W`` comes from the model's own errors at the same horizon step over the previous 52
     origins, so the first 53 origins are not reconciled and every number here is on
-    origins 53 onward. Each node's quantiles move with its median.
+    origins 53 onward. Two reconciliations are reported from one pass:
+
+    **+ MinT** reconciles the median and moves each node's quantiles with it. The medians
+    are coherent; the spread is the base model's and nothing is claimed about it.
+
+    **+ MinT paths** is the probabilistic reconciliation of `PLAN.md` section 2.5. Each of
+    the 52 error vectors in the window is added to the base forecast and put through the
+    same projection, so every draw is coherent across all 37 series at once and the
+    distribution is read off those draws. Its quantiles still do not sum, and
+    `headroom.reconcile.paths` says why that is correct rather than a defect.
+
+    A model that forecasts only a median is reconciled the same way, because the paths take
+    their spread from the error window rather than from the model's own quantiles. Its base
+    row is its conformal distribution, which is what `score` gives it.
 
     Args:
         model: The model whose finished checkpoint is reconciled.
@@ -702,30 +715,19 @@ def reconcile(
         window: Trailing training window it was built with, or 0 for expanding.
 
     Raises:
-        typer.Exit: The checkpoint is missing, incomplete, or holds a median only.
+        typer.Exit: The checkpoint is missing or incomplete.
     """
     from headroom.backtest.run import score_forecasts
-    from headroom.backtest.store import open_checkpoint
-    from headroom.reconcile.mint import reconcile_backtest, shift_quantiles
+    from headroom.reconcile.mint import shift_quantiles
+    from headroom.reconcile.paths import reconcile_paths
 
-    if model in POINT_MODELS:
-        typer.echo(f"{model} stores a median only; reconcile a quantile model")
-        raise typer.Exit(code=1)
     panel, origins = _schedule(step, window)
-    path = output_dir() / _checkpoint_name(model, step, origins)
-    if not path.exists():
-        typer.echo(f"no checkpoint at {path}")
-        raise typer.Exit(code=1)
-    checkpoint = open_checkpoint(path, model, origins, panel.hierarchy.n_nodes, lv.SCORING)
-    if not checkpoint.complete:
-        typer.echo(f"{model}: {checkpoint.n_done} of {len(origins)} origins done")
-        raise typer.Exit(code=1)
-
+    checkpoint = _complete_checkpoint(model, step, origins, panel.hierarchy.n_nodes)
     actual = np.stack([panel.values[:, origin.target] for origin in origins])
-    median_at = int(np.abs(lv.SCORING - 0.5).argmin())
-    base_median = checkpoint.quantiles[..., median_at]
+    base_median = checkpoint.quantiles[..., _median_at(_stored_levels(model))]
+
     started = time.perf_counter()
-    result = reconcile_backtest(base_median, actual, panel.hierarchy, step)
+    result = reconcile_paths(base_median, actual, panel.hierarchy, lv.SCORING, step)
     took = time.perf_counter() - started
     start = result.first_valid
 
@@ -738,37 +740,50 @@ def reconcile(
     typer.echo(
         f"{model}, origins {start} to {len(origins) - 1}, reconciled in {took:.0f}s\n"
         f"  coherence error, largest breach in incidents: base {base_breach:.1f}, "
-        f"reconciled {result.coherence_error:.2e}\n"
+        f"medians {result.coherence_error:.2e}, and the same over every sample path\n"
         f"  shrinkage intensity: median {np.median(intensity):.3f}, "
-        f"range {intensity.min():.3f} to {intensity.max():.3f}"
+        f"range {intensity.min():.3f} to {intensity.max():.3f}\n"
+        f"  path values below zero, not floored so that coherence stays exact: "
+        f"{result.negative_share:.4%}"
     )
 
-    reconciled_quantiles = shift_quantiles(
-        checkpoint.quantiles[start:], base_median[start:], result.medians[start:]
-    )
     seconds = float(checkpoint.seconds.sum())
+    base_quantiles = _distribution(model, checkpoint.quantiles, actual, step)
     base = score_forecasts(
         model,
         panel.hierarchy,
         origins,
-        checkpoint.quantiles[start:],
+        base_quantiles[start:],
         actual[start:],
         lv.SCORING,
         seconds,
     )
-    del checkpoint
+    shifted = shift_quantiles(
+        base_quantiles[start:], base_median[start:], result.medians[start:]
+    )
+    del checkpoint, base_quantiles
     reconciled = score_forecasts(
         f"{model} + MinT",
         panel.hierarchy,
         origins,
-        reconciled_quantiles,
+        shifted,
         actual[start:],
         lv.SCORING,
         seconds,
     )
-    del reconciled_quantiles
+    del shifted
+    coherent = score_forecasts(
+        f"{model} + MinT paths",
+        panel.hierarchy,
+        origins,
+        result.quantiles[start:],
+        actual[start:],
+        lv.SCORING,
+        seconds,
+    )
     _print_scores(base, None, None)
     _print_scores(reconciled, None, base)
+    _print_scores(coherent, None, base)
 
 
 @app.command()
@@ -1234,6 +1249,8 @@ def report(
     from headroom.backtest.run import score_forecasts
     from headroom.conformal.predictive import first_valid_origin
     from headroom.decide.newsvendor import critical_ratio, load_inputs
+    from headroom.reconcile.mint import shift_quantiles
+    from headroom.reconcile.paths import reconcile_paths
     from headroom.report import tables
 
     panel, origins = _schedule(step, window)
@@ -1290,20 +1307,30 @@ def report(
     checkpoint = _complete_checkpoint(best, step, origins, hierarchy.n_nodes)
     demand[best] = _area_demand(checkpoint.quantiles, panel, start, service)
     typer.echo(f"reconciling {best}")
-    shifted, mint = _mint_quantiles(checkpoint.quantiles, actual, panel, step)
+    median_at = int(np.abs(lv.SCORING - 0.5).argmin())
+    base_median = checkpoint.quantiles[..., median_at]
+    mint = reconcile_paths(base_median, actual, hierarchy, lv.SCORING, step)
     if mint.first_valid > start:
         typer.echo(f"MinT starts at origin {mint.first_valid}, after {start}")
         raise typer.Exit(code=1)
-    median_at = int(np.abs(lv.SCORING - 0.5).argmin())
     base_breach = max(
-        hierarchy.coherence_error(checkpoint.quantiles[o, :, h, median_at])
+        hierarchy.coherence_error(base_median[o, :, h])
         for o in range(start, len(origins))
         for h in range(origins.horizon)
+    )
+    shifted = np.full_like(checkpoint.quantiles, np.nan)
+    shifted[start:] = shift_quantiles(
+        checkpoint.quantiles[start:], base_median[start:], mint.medians[start:]
     )
     del checkpoint
     reconciled = scored(f"{best} + MinT", shifted)
     demand[f"{best} + MinT"] = _area_demand(shifted, panel, start, service)
     del shifted
+    # The probabilistic reconciliation: the decision layer was always meant to staff from a
+    # reconciled distribution rather than from a reconciled median with borrowed spread.
+    coherent_name = f"{best} + MinT paths"
+    coherent = scored(coherent_name, mint.quantiles)
+    demand[coherent_name] = _area_demand(mint.quantiles, panel, start, service)
 
     others: dict[str, Scores] = {}
     for name in [*_names(boosting), *_names(neural)]:
@@ -1387,22 +1414,24 @@ def report(
     reconcile_rows = []
     for level, level_name in LEVEL_NAMES.items():
         before = candidates[best].by_origin(candidates[best].crps, level)
-        after = reconciled.by_origin(reconciled.crps, level)
-        reconcile_rows.append(
-            [
-                level_name,
-                tables.number(tables.Estimate.of(confidence_interval(before))),
-                tables.number(tables.Estimate.of(confidence_interval(after))),
+        places = min(3, tables.decimals_for(float(before.mean())) + 1)
+        nominal_at = list(reconciled.nominal).index(MAIN_NOMINAL)
+        row = [
+            level_name,
+            tables.number(tables.Estimate.of(confidence_interval(before))),
+        ]
+        for scores in (reconciled, coherent):
+            after = scores.by_origin(scores.crps, level)
+            hits = scores.by_origin(scores.hits[..., nominal_at].astype(np.float64), level)
+            row += [
                 tables.number(
                     tables.Estimate.of(confidence_interval(after - before)),
-                    places=min(3, tables.decimals_for(float(before.mean())) + 1),
+                    places=places,
                     signed=True,
                 ),
-                tables.number(
-                    tables.Estimate.of(skill_interval(after, before)), places=3, signed=True
-                ),
+                tables.number(tables.Estimate.of(confidence_interval(hits)), places=3),
             ]
-        )
+        reconcile_rows.append(row)
 
     staffing_rows = []
     for j, service_level in enumerate(service):
@@ -1552,24 +1581,36 @@ def report(
             f"given the holiday calendar.{refit_note}{unbuilt_note}",
             "",
             *zero_shot_block,
-            f"**Reconciliation: {best} with MinT**",
+            f"**Reconciliation: {best} with MinT, two ways**",
             "",
-            f"Largest coherence breach over every origin and horizon step, in incidents: "
-            f"{base_breach:.1f} before reconciling, {mint.coherence_error:.1e} after.",
+            f"Base forecasts made one series at a time do not sum: the largest breach of the "
+            f"summing constraints is {base_breach:.1f} incidents. Both reconciliations close "
+            f"it to {mint.coherence_error:.1e}, and **MinT paths closes it over every draw of "
+            "the distribution**, not only the median.",
             "",
             tables.markdown_table(
                 [
                     "Level",
                     f"CRPS, {best}",
-                    f"CRPS, {best} + MinT",
-                    "Change from reconciling",
-                    "Skill of reconciling",
+                    "MinT: change in CRPS",
+                    "MinT: coverage at 90%",
+                    "MinT paths: change in CRPS",
+                    "MinT paths: coverage at 90%",
                 ],
                 reconcile_rows,
             ),
             "",
-            "Only the medians are reconciled; each node's quantiles move with its median. "
-            "Probabilistic reconciliation is not built yet.",
+            "**MinT** reconciles the median and moves each node's quantiles with it, so the "
+            "medians are coherent and the spread is still the base model's. **MinT paths** "
+            "is the probabilistic reconciliation: each of the 52 error vectors in the "
+            "window is added to the base forecast and put through the same projection, so "
+            "every draw is coherent across all 37 series at once and the distribution is "
+            "read off those draws. Its quantiles still do not sum, and they are not supposed "
+            "to: the boroughs do not have their bad days together, so the city's 90th "
+            "percentile is below the sum of theirs. What is coherent is every draw, which is "
+            "what a decision taken over the whole hierarchy needs. Paths are not floored at "
+            f"zero, because that would break the coherence they exist for; "
+            f"{mint.negative_share:.4%} of path values fall below zero.",
             "",
             "**The rota: staffing every dispatch area, priced against an oracle**",
             "",

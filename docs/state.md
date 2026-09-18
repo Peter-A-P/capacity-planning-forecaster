@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 7.
 
-**266 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**277 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -25,6 +25,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
 | `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
 | `test_reconcile.py` | 9 | MinT coherence for any input, equality with hierarchicalforecast, feedback rule |
+| `test_paths.py` | 11 | Every sample path coherent at every origin, the marginals deliberately not summing, the feedback rule |
 | `test_decide.py` | 10 | Critical ratio beats every staffing level by brute force, oracle costs nothing, the inputs table |
 | `test_score.py` | 34 | CRPS against the closed form, pinball, coverage, width, skill, block bootstrap |
 | `test_conformal.py` | 20 | The feedback rule, the conformal quantile, split, adaptive, aggregated |
@@ -50,9 +51,10 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ### The models, and what is still missing
 
-Every model named in `PLAN.md` section 1 is now built and scored. The first entries are
-here because the verdict on them is the point, not the code. What is genuinely not built
-starts at probabilistic reconciliation.
+Every model named in `PLAN.md` section 1 is now built and scored, and so is the whole
+reconciliation. The first entries are here because the verdict on them is the point, not
+the code. What is genuinely not built is the charts, conformal on the reconciled forecasts,
+and the dashboard.
 
 - **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
   scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
@@ -81,12 +83,16 @@ starts at probabilistic reconciliation.
   Score it with `headroom score --from-day 2023-11-30`, cross-check with `--from-day
   2025-09-15`. Its checkpoint holds its nine deciles; the median is the forecast and the
   scored distribution is conformal, as LightGBM's is.
-- **Reconciliation: point MinT done, probabilistic not built.** `headroom reconcile
-  --model ETS`: coherence error 515 incidents to 0; city CRPS -7.05 [-8.24, -4.80],
-  borough -0.97 [-1.13, -0.69], dispatch area unchanged. Still to build: coherent sample
-  paths for the whole distribution, conformal on the reconciled forecasts, and
-  reconciling LightGBM (it stores a median, so its distribution has to be rebuilt from
-  reconciled errors).
+- **Reconciliation: point and probabilistic both done.** `headroom reconcile --model ETS`
+  reports both from one pass, in about 7 seconds. Point MinT: coherence error 515 incidents
+  to 0; city CRPS -7.05 [-8.24, -4.80], borough -0.97 [-1.13, -0.69], areas unchanged.
+  **MinT paths**, the probabilistic one (`headroom.reconcile.paths`): every draw coherent
+  to 5e-12, city -6.33 [-8.09, -3.40], areas +0.170, and it is the only thing in the project
+  that brings ETS's coverage to nominal at all three levels (0.901 / 0.900 / 0.901 against
+  0.918 / 0.911 / 0.904). On LightGBM it is close to free: city **-8.42 [-10.40, -6.88]**,
+  the largest reconciliation gain here, narrower everywhere, calibration held. Because the
+  paths need only a median, the median-only models reconcile too, which was the gap this
+  entry used to record. Still to build: conformal on the reconciled forecasts.
 - **Decision layer: done.** `headroom decide`, inputs in `inputs/decision.toml`
   (illustrative). At the cost-implied 80 percent, ETS costs 65.76 a day against seasonal
   naive's 85.13; LightGBM ties ETS at 80 and costs 15 percent more at 95. N-HiTS costs
@@ -106,6 +112,28 @@ starts at probabilistic reconciliation.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---
+
+## Done: probabilistic reconciliation, and what coherence costs
+
+**Built and measured 2026-09-18.** `headroom.reconcile.paths`, 11 tests in
+`tests/test_paths.py`. Each of the 52 error vectors in the window is added to the base
+forecast and put through the MinT projection, so every draw is coherent across all 37
+series at once. Base breach 514.8 incidents, every path coherent to 5.46e-12. It runs in
+7 seconds over 911 origins, which was the surprise: this was budgeted as the expensive
+piece and it is the cheapest thing in the project.
+
+Read `docs/methods.md` for the tables. The short version: on ETS it trades 2 percent of
+CRPS at the dispatch areas for the only nominal coverage at all three levels the project
+has produced; on LightGBM it is the largest reconciliation gain here at no cost to
+calibration; and in the rota it staffs slightly more, because a coherent area distribution
+has a wider upper tail than ETS's own.
+
+Two deliberate refusals, both tested. The paths are not floored at zero, because clipping
+breaks the coherence they exist for. And the marginal quantiles do not sum, which is
+correct: a test asserts they do not, so that nobody later "fixes" it.
+
+Command: `uv run headroom reconcile --model ETS --step 7`, and the same for any other
+finished checkpoint including the median-only ones.
 
 ## Done: TimesFM, zero-shot, and the window that disagrees with itself
 
