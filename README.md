@@ -5,8 +5,8 @@ ranges that actually hold when conditions shift, turned into a staffing number a
 service level. Overstaffing costs money; understaffing costs patients. This puts a
 defensible number on both, site by site, rolling up to the region.
 
-**Status: building.** Every model the plan names is measured and the tables below are
-complete; the static dashboard is the last deliverable. The plan is in [PLAN.md](PLAN.md):
+**Status: building.** Every model the plan names is measured, the tables below are complete,
+and the dashboard is built; publishing it is what is left. The plan is in [PLAN.md](PLAN.md):
 public demand series, everything on a desktop CPU.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
@@ -169,6 +169,25 @@ leaves the 95 percent band altogether in late March 2020; the bands chase it up 
 later, which is exactly the forecast horizon; and by the time they arrive the outcome has
 dropped through the bottom. A 14-day forecast cannot see a shift that happens inside its
 own horizon, and no amount of interval calibration changes that.
+
+## The dashboard
+
+The same numbers, but you can move them. `dashboard/` is a static page over two JSON files
+written by `headroom export` from the same checkpoints the tables above come from. Four
+panels: the forecast with any of the 37 series picked out of the hierarchy, coverage through
+the shift with the trailing window under your control, the reconciliation table, and a
+service-level slider that re-prices the rota at each level it was measured at. No framework,
+no web fonts, and no request that leaves the page.
+
+```bash
+uv run headroom export    # writes dashboard/data/*.json, validated against a schema
+uv run headroom serve     # http://localhost:8080, with the headers the host will send
+```
+
+Use `headroom serve` rather than a plain file server. A file server sends none of the
+headers in `dashboard/staticwebapp.config.json`, so it shows a page the content security
+policy would partly refuse, and a page that only works without one is a page that breaks
+when it is published. [docs/deploy.md](docs/deploy.md) is the deployment runbook.
 
 ## What this does not do
 

@@ -28,6 +28,9 @@ dependencies = [
   "httpx>=0.27,<1.0",        # the NYC loader's paged SoQL fetch; pre-1.0, so the ceiling is 1.0
   "typer>=0.15,<1.0",        # the headroom CLI; pre-1.0 so the ceiling is the next minor-as-major
   "matplotlib>=3.9,<4.0",    # coverage, fan and reconciliation charts written to disk, no interactive backend
+  "jsonschema>=4.23,<5.0",   # the dashboard payloads are checked before they are written; the page is
+                             # static and has no backend to fail loudly. 4.23 is the first with the
+                             # 2020-12 validator under this name, and 5.x may rename it again
 ]
 
 [project.optional-dependencies]
@@ -70,6 +73,7 @@ dev = [
   "mypy>=1.13,<2.0",
   "ruff>=0.8,<1.0",
   "pandas-stubs>=2.2,<3.0",
+  "types-jsonschema>=4.23,<5.0",
 ]
 
 [tool.hatch.build.targets.wheel]

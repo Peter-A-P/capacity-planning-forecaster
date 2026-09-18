@@ -81,7 +81,7 @@ class CoverageSeries:
     width: npt.NDArray[np.float64]
 
 
-def _rolling(values: npt.NDArray[np.float64], window: int) -> npt.NDArray[np.float64]:
+def rolling_mean(values: npt.NDArray[np.float64], window: int) -> npt.NDArray[np.float64]:
     """Trailing mean over ``window`` points, ignoring the gaps before calibration starts.
 
     Args:
@@ -161,12 +161,12 @@ def coverage_chart(
             colour = PALETTE[i % len(PALETTE)]
             top.plot(
                 days,
-                _rolling(one.coverage, window),
+                rolling_mean(one.coverage, window),
                 color=colour,
                 linewidth=1.3,
                 label=one.method,
             )
-            bottom.plot(days, _rolling(one.width, window), color=colour, linewidth=1.1)
+            bottom.plot(days, rolling_mean(one.width, window), color=colour, linewidth=1.1)
         top.axhline(nominal, color="#888888", linestyle="--", linewidth=1.0)
         top.set_ylabel(f"coverage at {nominal:.0%}")
         bottom.set_ylabel("mean width")

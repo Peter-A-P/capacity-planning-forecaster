@@ -17,6 +17,9 @@ then the expensive model comparison.
     headroom decide              staffing from each forecast, priced against an oracle
     headroom score               score finished checkpoints as skill against the baseline
     headroom report              fill the README's results tables (the only thing that may)
+    headroom charts              the coverage chart and the fan chart, as PNG
+    headroom export              the dashboard's JSON, validated against its schema
+    headroom serve               the dashboard locally, with the headers the host sends
 
 Backtest output goes to `backtest/out` unless `HEADROOM_OUT` names another directory. A
 full weekly checkpoint is about 740 MB per model, which is worth keeping out of a synced
@@ -29,7 +32,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Annotated, Final
+from typing import TYPE_CHECKING, Annotated, Any, Final
 
 import numpy as np
 import numpy.typing as npt
@@ -56,7 +59,10 @@ from headroom.reconcile.mint import ReconciledMedians
 from headroom.score import levels as lv
 from headroom.score.bootstrap import BLOCK, confidence_interval, skill_interval
 from headroom.score.coverage import empirical_coverage
-from headroom.types import Level
+from headroom.types import LEVELS, Level
+
+if TYPE_CHECKING:  # Imported for the annotation only; matplotlib is not loaded to type it.
+    from headroom.report.charts import CoverageSeries
 
 app = typer.Typer(add_completion=False, help=__doc__)
 data_app = typer.Typer(help="Fetch and check the demand data.")
@@ -1184,6 +1190,71 @@ CHARTS = Path("docs/charts")
 SHIFT = (date(2020, 3, 1), date(2020, 6, 1))
 
 
+def _level(name: str) -> Level:
+    """Narrow a level option to one of the hierarchy's own levels.
+
+    Args:
+        name: The option's value.
+
+    Returns:
+        The level.
+
+    Raises:
+        typer.Exit: It is not a level of this hierarchy.
+    """
+    for level in LEVELS:
+        if level == name:
+            return level
+    typer.echo(f"{name} is not a level; choose one of {', '.join(LEVELS)}")
+    raise typer.Exit(code=1)
+
+
+def _coverage_series(
+    panel: Panel, origins: Origins, alphas: list[float], level: Level
+) -> list["CoverageSeries"]:
+    """Wrap seasonal naive in every conformal method and measure coverage through time.
+
+    Shared by the chart and the export so the PNG in the README and the panel on the
+    dashboard cannot be drawn from different numbers. The backtest and its wrappers are
+    hundreds of megabytes and are dropped here, before anything else is opened.
+
+    Args:
+        panel: The panel.
+        origins: The schedule.
+        alphas: Target miscoverages, so 0.10 is a 90 percent interval.
+        level: Hierarchy level coverage is measured at.
+
+    Returns:
+        One series per method per nominal level, in that order.
+    """
+    from headroom.report.charts import CoverageSeries
+
+    typer.echo("running seasonal naive for the coverage panel")
+    naive = run(SeasonalNaive(), "Seasonal naive", panel.values, panel.hierarchy, origins)
+    series: list[CoverageSeries] = []
+    for target in alphas:
+        # The legend carries the method, not its alpha: each row of the chart is one
+        # nominal level and says so on its own axis, so repeating it truncates the labels
+        # and tells the reader nothing.
+        for method, label in (
+            (SplitConformal(target), "split"),
+            (AdaptiveConformal(target, gamma=0.05), "adaptive, gamma 0.05"),
+            (AggregatedConformal(target), "aggregated, 6 experts"),
+        ):
+            result = apply(method, naive, panel.values, target)
+            series.append(
+                CoverageSeries(
+                    method=label,
+                    nominal=1.0 - target,
+                    coverage=result.coverage_by_origin(level),
+                    width=result.width_by_origin(level),
+                )
+            )
+            typer.echo(f"  {1 - target:.0%} {method.name[:44]}: {result.coverage(level):.4f}")
+            del result
+    return series
+
+
 @app.command()
 def charts(
     model: Annotated[str, typer.Option(help="The model the fan chart draws.")] = "ETS",
@@ -1228,37 +1299,14 @@ def charts(
     Raises:
         typer.Exit: A checkpoint is missing or incomplete, or the options select no days.
     """
-    from headroom.report.charts import CoverageSeries, coverage_chart, fan_chart
+    from headroom.report.charts import coverage_chart, fan_chart
 
     panel, origins = _schedule(step, window)
     listed = list(origins)
     directory = Path(out)
     window_origins = max(3, SHIFT_WINDOW_DAYS // step)
 
-    typer.echo("running seasonal naive for the coverage chart")
-    naive = run(SeasonalNaive(), "Seasonal naive", panel.values, panel.hierarchy, origins)
-    series: list[CoverageSeries] = []
-    for target in [float(a) for a in _names(alpha)]:
-        # The legend carries the method, not its alpha: each row of the chart is one
-        # nominal level and says so on its own axis, so repeating it truncates the labels
-        # and tells the reader nothing.
-        for method, label in (
-            (SplitConformal(target), "split"),
-            (AdaptiveConformal(target, gamma=0.05), "adaptive, gamma 0.05"),
-            (AggregatedConformal(target), "aggregated, 6 experts"),
-        ):
-            result = apply(method, naive, panel.values, target)
-            series.append(
-                CoverageSeries(
-                    method=label,
-                    nominal=1.0 - target,
-                    coverage=result.coverage_by_origin(level),
-                    width=result.width_by_origin(level),
-                )
-            )
-            typer.echo(f"  {1 - target:.0%} {method.name[:44]}: {result.coverage(level):.4f}")
-            del result
-
+    series = _coverage_series(panel, origins, [float(a) for a in _names(alpha)], _level(level))
     written = coverage_chart(
         series,
         [origin.day for origin in listed],
@@ -1268,9 +1316,9 @@ def charts(
         shift=SHIFT,
     )
     typer.echo(f"wrote {written}")
-    # The backtest and its conformal wrappers are hundreds of megabytes and the fan chart
-    # needs none of them, so they go before a checkpoint of the same size is opened.
-    del naive, series
+    # The series are hundreds of megabytes and the fan chart needs none of them, so they go
+    # before a checkpoint of the same size is opened.
+    del series
 
     checkpoint = _complete_checkpoint(model, step, origins, panel.hierarchy.n_nodes)
     quantiles = _distribution(model, checkpoint.quantiles, actual_of(panel, origins), step)
@@ -1798,6 +1846,299 @@ def report(
             typer.echo(str(error))
             raise typer.Exit(code=1) from error
         typer.echo(f"wrote {README}")
+
+
+#: The static site, and the directory inside it the page fetches its JSON from.
+DASHBOARD = Path("dashboard")
+DASHBOARD_DATA = DASHBOARD / "data"
+
+#: Service levels the slider stops at, beside whatever the decision inputs name. A staffing
+#: table is only as continuous as the levels it was computed at, and each one costs another
+#: pass over every origin, area and day, so the slider moves in whole percentage steps of
+#: five rather than pretending to be continuous.
+SLIDER_LEVELS: Final[tuple[float, ...]] = tuple(round(0.50 + 0.05 * i, 2) for i in range(10))
+
+
+@app.command()
+def export(
+    statistical: Annotated[
+        str, typer.Option(help="The statistical model the page draws and reconciles.")
+    ] = "ETS",
+    boosting: Annotated[
+        str, typer.Option(help="The gradient-boosting checkpoint.")
+    ] = "LightGBM",
+    neural: Annotated[
+        str, typer.Option(help="Comma-separated neural checkpoints, staffed from.")
+    ] = "N-HiTS-refit4",
+    alpha: Annotated[
+        str, typer.Option(help="Target miscoverages for the coverage panel.")
+    ] = "0.20,0.10,0.05",
+    level: Annotated[str, typer.Option(help="Hierarchy level the coverage panel measures.")] = (
+        "city"
+    ),
+    horizon_step: Annotated[int, typer.Option(help="Days ahead the fan chart draws.")] = 14,
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+    out: Annotated[str, typer.Option(help="Directory the JSON is written to.")] = str(
+        DASHBOARD_DATA
+    ),
+) -> None:
+    """Write the dashboard's JSON from the finished checkpoints.
+
+    The page is static and has no backend to fail loudly, so everything it draws is computed
+    here and checked against a schema before it is written. It is the same work `headroom
+    report` does, on the same origins, from the same checkpoints: the dashboard is a second
+    view of the README's numbers and not a second measurement of them.
+
+    Takes several minutes and a few gigabytes of memory, one checkpoint at a time.
+
+    Args:
+        statistical: The statistical model the fan chart draws and the reconciliation view
+            reconciles. One model, not a list: the page shows one forecast at a time.
+        boosting: The gradient-boosting checkpoint, staffed from.
+        neural: Neural checkpoints, staffed from.
+        alpha: Comma-separated target miscoverages, so 0.10 is a 90 percent interval.
+        level: Hierarchy level the coverage panel measures.
+        horizon_step: Days ahead the fan chart draws, between 1 and the horizon.
+        step: Days between origins the checkpoints were built with.
+        window: Trailing training window they were built with, or 0 for expanding.
+        out: Directory the JSON is written to.
+
+    Raises:
+        typer.Exit: A checkpoint is missing or incomplete, or an option is out of range.
+    """
+    from headroom.backtest.run import score_forecasts
+    from headroom.conformal.predictive import first_valid_origin
+    from headroom.decide.newsvendor import critical_ratio, load_inputs
+    from headroom.reconcile.mint import shift_quantiles
+    from headroom.reconcile.paths import reconcile_paths
+    from headroom.report import export as ex
+
+    panel, origins = _schedule(step, window)
+    hierarchy = panel.hierarchy
+    if not 1 <= horizon_step <= origins.horizon:
+        typer.echo(f"horizon step {horizon_step} is outside 1 to {origins.horizon}")
+        raise typer.Exit(code=1)
+    start = first_valid_origin(origins.horizon, step)
+    listed = list(origins)
+    days = [origin.day for origin in listed[start:]]
+    actual = actual_of(panel, origins)
+    directory = Path(out)
+
+    inputs = load_inputs()
+    implied = critical_ratio(inputs.cost_over, inputs.cost_under)
+    service = _service_levels(implied, (*inputs.service_levels, *SLIDER_LEVELS))
+
+    # The coverage panel first, and then nothing of it is kept: the wrappers are hundreds of
+    # megabytes and every checkpoint below is the same size again.
+    covered = _coverage_series(panel, origins, [float(a) for a in _names(alpha)], _level(level))
+    coverage = ex.coverage_section(
+        level=level,
+        days=days,
+        window_origins=max(3, SHIFT_WINDOW_DAYS // step),
+        shift=SHIFT,
+        methods=[
+            (one.method, one.nominal, one.coverage[start:], one.width[start:])
+            for one in covered
+        ],
+    )
+    del covered
+
+    def scored(name: str, quantiles: npt.NDArray[np.float64]) -> Scores:
+        typer.echo(f"scoring {name}")
+        return score_forecasts(
+            name, hierarchy, origins, quantiles[start:], actual[start:], lv.SCORING, 0.0
+        )
+
+    typer.echo(f"reading {statistical}")
+    checkpoint = _complete_checkpoint(statistical, step, origins, hierarchy.n_nodes)
+    band_at = [int(np.abs(lv.SCORING - q).argmin()) for q in ex.FAN_LEVELS]
+    # (node, level, origin): the page draws one node at a time, so the node is the outer
+    # axis and a series is one slice rather than a walk over the whole array.
+    at_step = checkpoint.quantiles[start:, :, horizon_step - 1, :]
+    bands = np.transpose(at_step[..., band_at], (1, 2, 0)).copy()
+    del at_step
+    forecast = ex.forecast_payload(
+        model=statistical,
+        horizon_step=horizon_step,
+        days=[panel.days[origin.index + horizon_step] for origin in listed[start:]],
+        nodes=list(hierarchy.nodes),
+        node_levels=list(hierarchy.levels),
+        actual=np.stack(
+            [panel.values[:, origin.index + horizon_step] for origin in listed[start:]], axis=1
+        ),
+        bands=bands,
+    )
+    del bands
+
+    base = scored(statistical, checkpoint.quantiles)
+    demand = {
+        "Seasonal naive": _naive_demand(panel, origins, start, service),
+        statistical: _area_demand(checkpoint.quantiles, panel, start, service),
+    }
+    median_at = int(np.abs(lv.SCORING - 0.5).argmin())
+    base_median = checkpoint.quantiles[..., median_at].copy()
+    base_breach = max(
+        hierarchy.coherence_error(base_median[o, :, h])
+        for o in range(start, len(origins))
+        for h in range(origins.horizon)
+    )
+    typer.echo(f"reconciling {statistical}")
+    mint = reconcile_paths(base_median, actual, hierarchy, lv.SCORING, step)
+    if mint.first_valid > start:
+        typer.echo(f"MinT starts at origin {mint.first_valid}, after {start}")
+        raise typer.Exit(code=1)
+    shifted = np.full_like(checkpoint.quantiles, np.nan)
+    shifted[start:] = shift_quantiles(
+        checkpoint.quantiles[start:], base_median[start:], mint.medians[start:]
+    )
+    del checkpoint, base_median
+    mint_name, paths_name = f"{statistical} + MinT", f"{statistical} + MinT paths"
+    variants = [(mint_name, scored(mint_name, shifted))]
+    demand[mint_name] = _area_demand(shifted, panel, start, service)
+    del shifted
+    variants.append((paths_name, scored(paths_name, mint.quantiles)))
+    demand[paths_name] = _area_demand(mint.quantiles, panel, start, service)
+
+    nominal_at = list(base.nominal).index(MAIN_NOMINAL)
+    rows: list[dict[str, Any]] = []
+    for name, label in LEVEL_NAMES.items():
+        before = base.by_origin(base.crps, name)
+        rows.append(
+            ex.reconciliation_row(
+                level=label,
+                base_crps=confidence_interval(before),
+                variants=[
+                    (
+                        variant,
+                        confidence_interval(scores.by_origin(scores.crps, name) - before),
+                        confidence_interval(
+                            scores.by_origin(
+                                scores.hits[..., nominal_at].astype(np.float64), name
+                            )
+                        ),
+                    )
+                    for variant, scores in variants
+                ],
+            )
+        )
+    reconciliation = ex.reconciliation_section(
+        model=statistical,
+        base_coherence_error=base_breach,
+        reconciled_coherence_error=mint.coherence_error,
+        negative_share=mint.negative_share,
+        nominal=MAIN_NOMINAL,
+        rows=rows,
+    )
+    del mint, variants, base
+
+    for other_name in [*_names(boosting), *_names(neural)]:
+        typer.echo(f"reading {other_name}")
+        other = _complete_checkpoint(other_name, step, origins, hierarchy.n_nodes)
+        quantiles = _distribution(other_name, other.quantiles, actual, step)
+        demand[_method_label(other_name)] = _area_demand(quantiles, panel, start, service)
+        del other, quantiles
+
+    typer.echo("staffing")
+    staffing = _staffing(demand, actual[start:], panel, service)
+    del demand
+    reference = staffing.costs[statistical]
+    methods = [
+        ex.staffing_method(
+            name=name,
+            units=[confidence_interval(values) for values in staffing.units[name]],
+            cost=[confidence_interval(values) for values in staffing.costs[name]],
+            cost_change=[
+                None if name == statistical else confidence_interval(values - reference[j])
+                for j, values in enumerate(staffing.costs[name])
+            ],
+        )
+        for name in staffing.costs
+    ]
+
+    payload = ex.dashboard_payload(
+        generated=date.today(),
+        origins=ex.origins_section(
+            days=days,
+            step=step,
+            horizon=origins.horizon,
+            train_window=origins.train_window,
+        ),
+        hierarchy=ex.hierarchy_section(
+            nodes=list(hierarchy.nodes), levels=list(hierarchy.levels)
+        ),
+        coverage=coverage,
+        reconciliation=reconciliation,
+        staffing=ex.staffing_section(
+            demand_per_unit=inputs.demand_per_unit,
+            cost_over=inputs.cost_over,
+            cost_under=inputs.cost_under,
+            implied=implied,
+            oracle_units=staffing.oracle_units,
+            reference=statistical,
+            service_levels=service,
+            methods=methods,
+        ),
+    )
+    try:
+        for filename, one in ((ex.DASHBOARD, payload), (ex.FORECAST, forecast)):
+            written = ex.write(directory, filename, one)
+            typer.echo(f"wrote {written} ({written.stat().st_size / 1e6:.2f} MB)")
+    except ValueError as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1) from error
+
+
+@app.command()
+def serve(
+    port: Annotated[int, typer.Option(help="Port to listen on.")] = 8080,
+    directory: Annotated[str, typer.Option(help="The site to serve.")] = str(DASHBOARD),
+) -> None:
+    """Serve the dashboard locally with the headers the host will send.
+
+    `python -m http.server` sends none of the headers in `staticwebapp.config.json`, so it
+    shows a page the content security policy would partly refuse. On project 01 that hid a
+    broken chart on the live site for two weeks while every local check looked correct, so
+    this serves the site the way it will be served.
+
+    Args:
+        port: Port to listen on.
+        directory: The site to serve.
+
+    Raises:
+        typer.Exit: The directory has no `staticwebapp.config.json` to read headers from.
+    """
+    import json
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    site = Path(directory)
+    config = site / "staticwebapp.config.json"
+    if not config.exists():
+        typer.echo(f"no {config}; run headroom export first, or name another directory")
+        raise typer.Exit(code=1)
+    headers: dict[str, str] = json.loads(config.read_text(encoding="utf-8")).get(
+        "globalHeaders", {}
+    )
+
+    class Handler(SimpleHTTPRequestHandler):
+        """A file server that sends the host's headers."""
+
+        def end_headers(self) -> None:
+            """Add the configured headers to every response."""
+            for key, value in headers.items():
+                self.send_header(key, value)
+            super().end_headers()
+
+    typer.echo(f"serving {site} on http://localhost:{port} with {len(headers)} headers")
+    address = ("127.0.0.1", port)
+    with ThreadingHTTPServer(address, partial(Handler, directory=str(site))) as http:
+        try:
+            http.serve_forever()
+        except KeyboardInterrupt:
+            typer.echo("stopped")
 
 
 def _names(option: str) -> list[str]:

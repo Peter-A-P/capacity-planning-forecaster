@@ -15,9 +15,9 @@ from headroom.report.charts import (
     FAN_BANDS,
     PALETTE,
     CoverageSeries,
-    _rolling,
     coverage_chart,
     fan_chart,
+    rolling_mean,
 )
 
 DAYS = [date(2020, 1, 5) + timedelta(days=7 * i) for i in range(40)]
@@ -26,7 +26,7 @@ PNG = b"\x89PNG\r\n\x1a\n"
 
 def test_the_rolling_mean_is_trailing_and_starts_when_the_window_is_full():
     values = np.arange(6, dtype=float)
-    out = _rolling(values, 3)
+    out = rolling_mean(values, 3)
     assert np.isnan(out[:2]).all()
     # The value at position 2 averages positions 0, 1 and 2, not 2, 3 and 4.
     assert out[2] == pytest.approx(1.0)
@@ -38,14 +38,14 @@ def test_the_rolling_mean_waits_for_a_window_with_no_gaps_in_it():
     # contains one of those would put a number on the chart earlier than the method could
     # produce one, which is exactly the kind of quiet overclaim these charts exist to avoid.
     values = np.array([np.nan, 1.0, 1.0, 1.0, 1.0])
-    out = _rolling(values, 3)
+    out = rolling_mean(values, 3)
     assert np.isnan(out[:3]).all()
     assert out[3] == pytest.approx(1.0)
 
 
 def test_the_rolling_window_must_fit():
     with pytest.raises(ValueError, match="does not fit"):
-        _rolling(np.ones(3), 4)
+        rolling_mean(np.ones(3), 4)
 
 
 def _series(nominal: float = 0.9, method: str = "split") -> CoverageSeries:

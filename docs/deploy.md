@@ -99,7 +99,7 @@ single CNAME; only an apex domain needs the TXT validation dance, and this is a 
 
 ## 4. Publish the files
 
-Once `headroom export` has written `dashboard/`:
+`dashboard/` is in the repository, data included, so this needs no build step:
 
 ```powershell
 $env:SWA_CLI_DEPLOYMENT_TOKEN = az staticwebapp secrets list --name capacity-peterparker-ca --resource-group <group> --query properties.apiKey -o tsv
@@ -115,13 +115,16 @@ Rerun both lines whenever `headroom export` rewrites the JSON.
 
 ## 5. Check it
 
+- Before publishing, look at it locally: `uv run headroom serve`, then
+  <http://localhost:8080>. **Not `python -m http.server`.** A plain file server sends none of
+  the headers in `dashboard/staticwebapp.config.json`, so it shows a page the content
+  security policy would partly refuse; `headroom serve` reads that file and sends what the
+  host will send. On 01 a plain file server hid a broken chart legend on the live site for
+  two weeks while every local check looked correct.
 - `https://capacity.peterparker.ca` serves over HTTPS with no certificate warning.
 - The page's numbers match the README's tables. They come from the same checkpoints.
-- Check it with the local server the export command provides rather than
-  `python -m http.server`. A plain file server sends none of the headers in
-  `dashboard/staticwebapp.config.json`, so it shows a page the content security policy would
-  partly refuse. On 01 that hid a broken chart legend on the live site for two weeks while
-  every local check looked correct.
+- Open the browser console on the live page and confirm it is empty. A content security
+  policy violation is reported there and nowhere else.
 
 ## If the free tier changes
 

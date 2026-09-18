@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 7.
 
-**287 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**307 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -35,6 +35,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
 | `test_charts.py` | 10 | The trailing window, the refusals that stop a series being drawn against the wrong dates, and that a real PNG appears |
 | `test_report.py` | 42 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
+| `test_export.py` | 20 | The dashboard payloads against their schema, `nan` never reaching JSON, an interval that does not contain its point refused, and the built page: every file it asks for is published, and it carries nothing its own content security policy would refuse |
 
 ### Built and measured
 
@@ -113,19 +114,19 @@ dashboard, which waits on project 01's static pattern.
   underneath, because coverage alone can be reached by widening; it is the picture of
   finding 1 below. The fan chart is ETS 14 days ahead through the shift. About 12 minutes,
   most of it the seasonal naive rerun and the nine conformal applications.
-- **Dashboard.** Deliberately held until project 01 builds the static decision-app pattern,
-  so 08 reuses it rather than inventing it. Peter's call, recorded in `PLAN.md`.
-  **Unblocked 2026-09-18:** 01 shipped ahead of its week 7 slot and its repository is
-  public, so the pattern can be read. It is `demo/` in that repository: a hand-written
-  `index.html`, `style.css` and a few plain `.js` files against precomputed JSON under
-  `demo/data/`, self-hosted fonts, its own `staticwebapp.config.json`, built by
-  `src/itx/demo/build.py` and served locally by `serve.py`, with `tests/test_demo.py`
-  checking the built output. That is the shape to copy here: `headroom export` writes the
-  JSON, `dashboard/` holds the static site, and the JSON validates against a schema
-  (`PLAN.md` section 5). **The "after Oct 25" date went with the dependency**: it was 01's
-  delivery date, not a waiting period, so the only thing left to decide is when to build
-  it. Publishing it is a separate decision from building it, because that provisions
-  hosting.
+- **Dashboard: built 2026-09-18, not yet published.** `headroom export` writes
+  `dashboard/data/dashboard.json` and `forecast.json`; `dashboard/` is the static site, on
+  01's pattern (hand-written `index.html`, `style.css` and one plain `app.js` against
+  precomputed JSON, no framework and no web fonts). Both payloads are validated against a
+  JSON Schema before they are written, and `tests/test_export.py` checks the built page as
+  well as the payloads. `headroom serve` serves it with the headers
+  `dashboard/staticwebapp.config.json` declares. Four panels, as `PLAN.md` section 4 names
+  them: the fan chart with a node picker, coverage through the shift with a window control,
+  the reconciliation table, and the service-level slider driving the staffing table.
+  **What is left is publishing**, which is a separate decision because it provisions
+  hosting: `docs/deploy.md` is the runbook, the Azure app and the Cloudflare record were
+  created on 2026-09-18, and the deploy itself needs the deployment token, which lives
+  nowhere in this repository.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---

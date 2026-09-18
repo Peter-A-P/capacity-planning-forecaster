@@ -369,6 +369,30 @@ and is dated rather than given an interval, since a bootstrap over a single wors
 means nothing. Fit time is the median model time per origin times the schedule, so time lost to a
 busy or sleeping machine is not charged to a model.
 
+**As built, the dashboard (2026-09-18).** `headroom export` writes two files rather than
+one. The fan chart's bands for every node at every origin are most of the payload, and the
+tables are a few kilobytes, so `forecast.json` is fetched second and the page draws its
+tables before it arrives. Both are validated against a JSON Schema in
+`headroom.report.export` before they are written: the page is served from a CDN with no
+backend, so a payload that has lost a field fails as a blank panel on a stranger's machine
+rather than in a terminal. Three deviations from the line above, all deliberate:
+
+- **The bands are five quantiles, not the scoring grid's 199.** Each level is another array
+  per node per origin in a file a browser downloads. The outer band, the quartiles and the
+  median are what a fan is read for.
+- **The service-level slider stops at the levels the staffing table was computed at**, which
+  are 50 to 95 percent in steps of five, plus whatever `inputs/decision.toml` names. A
+  staffing number is only as continuous as the levels it was measured at, and each one is
+  another pass over every origin, area and day. The slider also moves a line on the fan
+  chart, and that line is interpolated between the exported bands; the page says so.
+- **The page recomputes the trailing mean for the coverage panel**, so the window can be
+  changed without re-exporting. It is the only arithmetic in the JavaScript, and it mirrors
+  `headroom.report.charts.rolling_mean`, which is now public for that reason.
+
+`headroom serve` serves the site with the headers in `dashboard/staticwebapp.config.json`.
+A plain file server sends none of them, which on project 01 hid a broken chart on the live
+site for two weeks while every local check looked correct.
+
 ### Tests that matter
 
 The summing matrix reproduces every aggregate from its leaves; reconciled forecasts are
