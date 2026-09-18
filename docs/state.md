@@ -122,7 +122,10 @@ dashboard, which waits on project 01's static pattern.
   `src/itx/demo/build.py` and served locally by `serve.py`, with `tests/test_demo.py`
   checking the built output. That is the shape to copy here: `headroom export` writes the
   JSON, `dashboard/` holds the static site, and the JSON validates against a schema
-  (`PLAN.md` section 5). Still after the two weeks, per the plan.
+  (`PLAN.md` section 5). **The "after Oct 25" date went with the dependency**: it was 01's
+  delivery date, not a waiting period, so the only thing left to decide is when to build
+  it. Publishing it is a separate decision from building it, because that provisions
+  hosting.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---

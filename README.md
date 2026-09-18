@@ -5,8 +5,9 @@ ranges that actually hold when conditions shift, turned into a staffing number a
 service level. Overstaffing costs money; understaffing costs patients. This puts a
 defensible number on both, site by site, rolling up to the region.
 
-**Status: building,** started 2026-09-12. The plan is in [PLAN.md](PLAN.md): public demand
-series, everything on a desktop CPU.
+**Status: building.** Every model the plan names is measured and the tables below are
+complete; the static dashboard is the last deliverable. The plan is in [PLAN.md](PLAN.md):
+public demand series, everything on a desktop CPU.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
 intervals and the statistical models (ETS, Theta, MSTL and AutoARIMA, 964 weekly origins

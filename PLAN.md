@@ -18,6 +18,15 @@ in the portfolio. **Feeds:** nothing; reuses 01's static decision-app pattern.
 > has it. Week 2 below ships everything else, and the dashboard and `v0.1.0` follow after
 > Oct 25. Section 10's definition of done is unchanged; the dashboard box is simply the
 > last one ticked.
+>
+> **The dependency cleared on 2026-09-18, and with it the date.** 01 finished well ahead of
+> its week 7 and its repository is public, so the pattern exists and can be read: `demo/`
+> in `Peter-A-P/intervention-targeting-engine`, a hand-written `index.html`, `style.css`
+> and plain `.js` against precomputed JSON, built by `src/itx/demo/build.py` and checked by
+> `tests/test_demo.py`. Nothing about the dashboard was ever waiting on calendar time; "after
+> Oct 25" was 01's delivery date and not a cooling-off period. The dashboard can be built as
+> soon as it is wanted, and the only part of it that is not a local build is publishing it,
+> which is a separate decision because it provisions hosting.
 
 This project calls no language model, so neither the 04 gateway nor the 03 gate is on its
 path. Every number below comes from a rolling-origin backtest with block-bootstrap
