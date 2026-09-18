@@ -5,8 +5,8 @@ ranges that actually hold when conditions shift, turned into a staffing number a
 service level. Overstaffing costs money; understaffing costs patients. This puts a
 defensible number on both, site by site, rolling up to the region.
 
-**Status: building,** week 1 of two, started 2026-09-12. The plan is in
-[PLAN.md](PLAN.md): a two-week build on public demand series, everything on a laptop CPU.
+**Status: building,** started 2026-09-12. The plan is in [PLAN.md](PLAN.md): public demand
+series, everything on a laptop CPU.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)), the baseline and the
 conformal intervals are measured ([docs/methods.md](docs/methods.md)), and the statistical
@@ -58,7 +58,7 @@ fan charts, the coverage chart and a service-level slider.
 
 ## Part of a portfolio
 
-One of fifteen projects built over twelve months. It reuses the static decision-app pattern
+One of fifteen projects. It reuses the static decision-app pattern
 from the Intervention Targeting Engine and is the portfolio's second Azure hosting example.
 
 ## How this was built
