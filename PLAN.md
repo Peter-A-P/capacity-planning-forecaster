@@ -100,8 +100,8 @@ inference (the online update of the miscoverage level from realised coverage), w
 aggregated-expert variant to remove the step-size choice, applied to each model's point or
 median forecast per series and horizon.
 
-Implemented directly rather than through MAPIE, which the plan repository's one-line stack
-summary named (corrected 2026-09-12). Three reasons, in order of weight. The backtest needs
+Implemented directly rather than through MAPIE, which an earlier one-line stack summary
+named (corrected 2026-09-12). Three reasons, in order of weight. The backtest needs
 the conformal update to respect **when an outcome becomes known**: with weekly origins, the
 error of a 14-day-ahead forecast made at the previous origin has not happened yet, and
 MAPIE's time-series API is built around a scikit-learn regressor and its own refit loop,
@@ -456,7 +456,7 @@ free tier. No model vendor is called.
 | Reserve | A rented CPU box for a day if the full backtest with refits is too slow locally | 10 |
 | **Total** | | **10** |
 
-Well under the CA$25 line. Actuals go in the plan repository's STATUS next to the estimate.
+Well under the CA$25 line. Actual spend is recorded privately beside the estimate.
 
 ## 7. Handover
 

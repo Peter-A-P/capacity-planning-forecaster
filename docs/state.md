@@ -481,8 +481,8 @@ anticipate, which is worth more than confirming it would have been.
 - **State the conformal assumption wherever coverage is shown.** Adaptive conformal
   guarantees long-run average coverage, not per-period. Saying otherwise is the single
   most likely way for this project to be wrong in public.
-- **The repository is public when it goes live.** Nothing from the private plan comes
-  across except the one-liner and the technical line.
+- **The repository is public.** Everything in it is meant to be read by a stranger, and
+  nothing that is not is written down here.
 - **One test failed once and has not failed since.**
   `test_resuming_an_interrupted_run_produces_the_same_forecasts`, with a Windows
   `PermissionError` on the checkpoint's atomic rename. Six consecutive full runs afterwards
@@ -503,6 +503,6 @@ anticipate, which is worth more than confirming it would have been.
   at every origin and ignore the flag; N-HiTS refits on it (`headroom neural`), and
   `headroom.backtest.origins` now says exactly that. The neural model carries the
   handicap, never the cheap ones.
-- **The plan repository** (`../ml-portfolio-plan`) has `STATUS.md`, which is edited by
-  several sessions at once. Check `git status` there before committing, and commit only
-  the files you changed.
+- **This repository is self-contained.** Everything it needs is in it. Where the project
+  sits in a wider body of work, and where its spend is recorded, are private and are not
+  described here; the working notes that are not checked in carry that.

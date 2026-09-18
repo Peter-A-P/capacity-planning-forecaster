@@ -5,9 +5,9 @@ ranges that actually hold when conditions shift, turned into a staffing number a
 service level. Overstaffing costs money; understaffing costs patients. This puts a
 defensible number on both, site by site, rolling up to the region.
 
-**Status: building.** Every model the plan names is measured, the tables below are complete,
-and the dashboard is built; publishing it is what is left. The plan is in [PLAN.md](PLAN.md):
-public demand series, everything on a desktop CPU.
+**Status: live.** Every model the plan names is measured, the tables below are complete, and
+the dashboard is published at **[capacity.peterparker.ca](https://capacity.peterparker.ca)**.
+The plan is in [PLAN.md](PLAN.md): public demand series, everything on a desktop CPU.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
 intervals and the statistical models (ETS, Theta, MSTL and AutoARIMA, 964 weekly origins
@@ -170,7 +170,7 @@ later, which is exactly the forecast horizon; and by the time they arrive the ou
 dropped through the bottom. A 14-day forecast cannot see a shift that happens inside its
 own horizon, and no amount of interval calibration changes that.
 
-## The dashboard
+## The dashboard: [capacity.peterparker.ca](https://capacity.peterparker.ca)
 
 The same numbers, but you can move them. `dashboard/` is a static page over two JSON files
 written by `headroom export` from the same checkpoints the tables above come from. Four
