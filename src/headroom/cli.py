@@ -2119,12 +2119,27 @@ def serve(
     if not config.exists():
         typer.echo(f"no {config}; run headroom export first, or name another directory")
         raise typer.Exit(code=1)
-    headers: dict[str, str] = json.loads(config.read_text(encoding="utf-8")).get(
-        "globalHeaders", {}
-    )
+    declared = json.loads(config.read_text(encoding="utf-8"))
+    headers: dict[str, str] = declared.get("globalHeaders", {})
+    types: dict[str, str] = declared.get("mimeTypes", {})
 
     class Handler(SimpleHTTPRequestHandler):
-        """A file server that sends the host's headers."""
+        """A file server that sends the host's headers and the host's content types."""
+
+        def guess_type(self, path: str | os.PathLike[str]) -> str:
+            """Return the content type the host would send for a file.
+
+            Python's own table does not know woff2, and a font served as a byte stream is
+            one more way for the local page to differ from the published one.
+
+            Args:
+                path: The file being served.
+
+            Returns:
+                The type ``staticwebapp.config.json`` declares for that extension, or
+                Python's own guess.
+            """
+            return types.get(Path(path).suffix) or super().guess_type(path)
 
         def end_headers(self) -> None:
             """Add the configured headers to every response."""
@@ -2132,7 +2147,10 @@ def serve(
                 self.send_header(key, value)
             super().end_headers()
 
-    typer.echo(f"serving {site} on http://localhost:{port} with {len(headers)} headers")
+    typer.echo(
+        f"serving {site} on http://localhost:{port} with {len(headers)} headers "
+        f"and {len(types)} content types from {config.name}"
+    )
     address = ("127.0.0.1", port)
     with ThreadingHTTPServer(address, partial(Handler, directory=str(site))) as http:
         try:

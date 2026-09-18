@@ -11,7 +11,9 @@
     ".json": "application/json",
     ".js": "text/javascript",
     ".css": "text/css",
-    ".html": "text/html"
+    ".html": "text/html",
+    ".woff2": "font/woff2",
+    ".txt": "text/plain"
   },
   "routes": [
     {

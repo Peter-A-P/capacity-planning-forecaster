@@ -119,10 +119,13 @@ dashboard, which waits on project 01's static pattern.
   01's pattern (hand-written `index.html`, `style.css` and one plain `app.js` against
   precomputed JSON, no framework and no web fonts). Both payloads are validated against a
   JSON Schema before they are written, and `tests/test_export.py` checks the built page as
-  well as the payloads. `headroom serve` serves it with the headers
+  well as the payloads. `headroom serve` serves it with the headers and content types
   `dashboard/staticwebapp.config.json` declares. Four panels, as `PLAN.md` section 4 names
   them: the fan chart with a node picker, coverage through the shift with a window control,
-  the reconciliation table, and the service-level slider driving the staffing table.
+  the reconciliation table, and the service-level slider driving the staffing table. Each
+  chart has a hover readout. It takes peterparker.ca's palette, type and 3px rule, on 01's
+  pattern, with the two fonts copied into `dashboard/fonts/` because the policy allows no
+  off-origin request.
   **What is left is publishing**, which is a separate decision because it provisions
   hosting: `docs/deploy.md` is the runbook, the Azure app and the Cloudflare record were
   created on 2026-09-18, and the deploy itself needs the deployment token, which lives

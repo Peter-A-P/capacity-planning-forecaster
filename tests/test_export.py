@@ -260,6 +260,30 @@ def test_the_page_only_asks_for_files_that_are_published():
 
 
 @pytest.mark.skipif(not PAGE.exists(), reason="the dashboard has not been built")
+def test_the_stylesheet_only_asks_for_files_that_are_published():
+    # The fonts are reached from the stylesheet and not from the page, so the test above
+    # cannot see them, and the content security policy allows no off-origin font anyway: a
+    # missing file here is a page that silently falls back to a system font.
+    css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+    asked = re.findall(r"url\(([^)]+)\)", css)
+    assert asked, "the stylesheet asks for no files at all, which means the fonts are gone"
+    for reference in asked:
+        name = reference.strip("\"'")
+        assert not name.startswith("http"), f"{name} is off-origin and the policy forbids it"
+        assert (DASHBOARD / name).exists(), f"{name} is not in {DASHBOARD}"
+
+
+@pytest.mark.skipif(not CONFIG.exists(), reason="the dashboard has not been built")
+def test_every_kind_of_file_published_has_a_declared_content_type():
+    # Azure and the local server both read this table. A font served as a byte stream is one
+    # more way for the page a stranger sees to differ from the page that was checked.
+    declared = json.loads(CONFIG.read_text(encoding="utf-8"))["mimeTypes"]
+    for path in DASHBOARD.rglob("*"):
+        if path.is_file():
+            assert path.suffix in declared, f"{path.name} has no content type in {CONFIG.name}"
+
+
+@pytest.mark.skipif(not PAGE.exists(), reason="the dashboard has not been built")
 def test_the_page_carries_nothing_its_own_policy_would_refuse():
     # A page with an inline script or a style attribute needs 'unsafe-inline' in the policy,
     # which is the whole value of having one. On project 01 a local file server sent no

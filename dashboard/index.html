@@ -3,154 +3,258 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Capacity Planning Forecaster</title>
-<meta name="description" content="Hierarchical probabilistic demand forecasts with conformal intervals, reconciled so the parts sum to the whole, turned into a staffing number at a chosen service level.">
+<title>Capacity Planning Forecaster: did the forecast's range hold, and what should the rota be?</title>
+<meta name="description" content="Interactive results from a rolling-origin backtest of emergency medical demand in New York City. Watch the prediction intervals fail through March 2020, and turn the forecast into a staffing number at a service level you choose. Every number is precomputed and reproducible.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="masthead">
-  <h1>Capacity Planning Forecaster</h1>
-  <p class="lede">
-    Emergency medical calls for New York City, by dispatch area and borough, rolled up to the
-    city. Forecasts with uncertainty ranges that are measured rather than assumed, reconciled
-    so the parts sum to the whole, and turned into a staffing number at a service level you
-    choose.
-  </p>
-  <p class="provenance" id="provenance">Loading the measurements.</p>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="https://peterparker.ca"><span class="mono-mark" aria-hidden="true">P</span>Peter Parker</a>
+    <p class="top-nav"><a href="https://peterparker.ca/projects/capacity-planning-forecaster/">Project 08: Capacity Planning Forecaster</a></p>
+  </div>
 </header>
-
-<noscript>
-  <p class="warning">
-    This page draws its charts from two JSON files in the browser, so it needs JavaScript. The
-    same numbers are in the repository's README, as tables.
-  </p>
-</noscript>
-
-<p class="warning" id="failure" hidden></p>
-
 <main>
 
-<section id="fan-panel">
-  <h2>The forecast</h2>
-  <p>
-    One series at a time, at a fixed <span id="fan-step">14</span> days ahead: the band the model
-    gave, and what happened. Pick any node of the hierarchy. The 2020 shift is marked, and it is
-    the part worth looking at: the outcome leaves the band and stays outside it for months.
-  </p>
-  <div class="controls">
-    <label>Series
-      <select id="fan-node"></select>
-    </label>
-    <label>Period
-      <select id="fan-range">
-        <option value="shift">The 2020 shift</option>
-        <option value="recent">The last two years</option>
-        <option value="all">Every origin</option>
-      </select>
-    </label>
-  </div>
-  <figure>
-    <div class="chart" id="fan-chart"></div>
-    <figcaption id="fan-caption"></figcaption>
-  </figure>
-</section>
+  <header class="hero">
+    <p class="eyebrow">Measured results, reproducible from one command</p>
+    <h1>Anyone can forecast demand. Did the range hold when the world changed?</h1>
+    <p class="lead">
+      Emergency calls, arrivals, orders. A forecast that says "about 3,900 a day" is not a plan;
+      a forecast that says "3,600 to 4,200, and that range has held nine times in ten for
+      seventeen years" is. This page is the second claim, measured: 911 weekly forecasts of the
+      next fortnight, scored against what actually happened, and then turned into a number of
+      crews to put on shift. <strong>It includes the fortnight where the range broke.</strong>
+    </p>
+    <div class="hero-points">
+      <div class="point">
+        <span class="point-figure" id="hero-coverage">&mdash;</span>
+        <span class="point-unit" id="hero-coverage-unit"></span>
+        <span class="point-label">a 90 percent interval should hold 9 times in 10, and over 17 years it does</span>
+      </div>
+      <div class="point">
+        <span class="point-figure down" id="hero-worst">&mdash;</span>
+        <span class="point-unit" id="hero-worst-unit"></span>
+        <span class="point-label">the same interval, in its worst three months: March 2020</span>
+      </div>
+      <div class="point">
+        <span class="point-figure up" id="hero-saving">&mdash;</span>
+        <span class="point-unit" id="hero-saving-unit"></span>
+        <span class="point-label">what forecasting the rota saves against last-week's-demand staffing</span>
+      </div>
+    </div>
+    <p class="hero-note">
+      <span id="hero-context">Nothing is modelled in your browser.</span> Every number was computed
+      in advance by the backtest and is checkable in the repository, and every one carries a 95
+      percent confidence interval, because a number without one is an opinion.
+    </p>
+  </header>
 
-<section id="coverage-panel">
-  <h2>Did the intervals hold?</h2>
-  <p>
-    A 90 percent interval should contain the outcome 90 percent of the time. This is the share it
-    actually contained, in a trailing window, for three ways of building the interval around the
-    same seasonal naive forecast. Width is underneath, because an interval reaches any coverage
-    you like by being wide enough, and coverage bought with width is not a result.
-  </p>
-  <div class="controls">
-    <label>Nominal level
-      <select id="coverage-nominal"></select>
-    </label>
-    <label>Trailing window
-      <input type="range" id="coverage-window" min="4" max="52" step="1">
-      <output id="coverage-window-out"></output>
-    </label>
-  </div>
-  <figure>
-    <div class="chart" id="coverage-chart"></div>
-    <figcaption id="coverage-caption"></figcaption>
-  </figure>
-  <p class="assumption">
-    <strong>What conformal coverage promises.</strong> Split, adaptive and aggregated conformal
-    all guarantee coverage <em>on average over time</em>, and only if the forecast errors are
-    exchangeable. Demand through a shift is not exchangeable, so no coverage is promised in any
-    one window, and the chart above is what that looks like when the assumption fails: adaptive
-    conformal cannot widen past the largest error in its calibration window, so it does not
-    recover inside the shift however fast it adapts.
-  </p>
-</section>
+  <noscript>
+    <p class="warning">
+      This page draws its charts from two data files in the browser, so it needs JavaScript. The
+      same numbers are in the repository's README, as tables.
+    </p>
+  </noscript>
 
-<section id="reconciliation-panel">
-  <h2>Do the parts sum to the whole?</h2>
-  <p id="reconciliation-lede"></p>
-  <div class="scroller">
-    <table id="reconciliation-table">
-      <caption>
-        Change in CRPS against the unreconciled forecast, and coverage at the nominal level.
-        Negative is better: CRPS is a loss. Every number is a point estimate with a 95 percent
-        moving-block bootstrap interval over forecast origins.
-      </caption>
-    </table>
-  </div>
-  <p class="assumption" id="reconciliation-note"></p>
-</section>
+  <p class="warning" id="failure" hidden></p>
 
-<section id="staffing-panel">
-  <h2>The rota, priced</h2>
-  <p id="staffing-lede"></p>
-  <div class="controls">
-    <label>Service level
-      <input type="range" id="service-level" min="0" max="1" step="1">
-      <output id="service-level-out"></output>
-    </label>
-  </div>
-  <div class="scroller">
-    <table id="staffing-table">
-      <caption>
-        Units staffed a day and what that cost, summed over the dispatch areas and averaged over
-        the days ahead, against an oracle that knew each day's demand and so cost nothing. Every
-        number carries its 95 percent interval.
-      </caption>
-    </table>
-  </div>
-</section>
+  <section class="section" id="fan-panel">
+    <h2>What a forecast with a range actually looks like</h2>
+    <p class="section-lead">
+      One series at a time, forecast <span id="fan-step">14</span> days ahead. The band is where
+      the model said demand would be; the dark line is where it went. Pick any of the 37 series:
+      the whole city, one of five boroughs, or a single dispatch area, where the counts are small
+      and the noise is large.
+    </p>
 
-<section id="honesty">
-  <h2>What this page does not show</h2>
-  <ul>
-    <li>
-      Coverage is measured on seasonal naive wrapped in each conformal method, at one level of
-      the hierarchy, so that the three methods are compared on one forecast rather than three.
-    </li>
-    <li>
-      The service level moves the staffing table exactly, because the table was computed at each
-      of its stops. The line it draws on the forecast is interpolated between the bands that were
-      exported, and is there to be read, not measured.
-    </li>
-    <li>
-      The decision inputs are illustrative. They are a table in the repository, not constants in
-      the code, and every number below them moves when they are replaced.
-    </li>
-    <li>
-      Nothing here is live. Every number comes from one rolling-origin backtest over published
-      data, and the repository's README carries the same numbers as tables, with the models this
-      page does not draw.
-    </li>
-  </ul>
-  <p>
-    Source, method and the full results:
-    <a href="https://github.com/Peter-A-P/capacity-planning-forecaster">github.com/Peter-A-P/capacity-planning-forecaster</a>.
-    Data: NYC EMS incident dispatch data, published by the City of New York.
-  </p>
-</section>
+    <div class="controls">
+      <div class="control">
+        <label for="fan-node">Series
+          <span class="hint">city, borough, or dispatch area</span>
+        </label>
+        <select id="fan-node"></select>
+      </div>
+      <div class="control">
+        <label for="fan-range">Period
+          <span class="hint">the shift is the part worth looking at</span>
+        </label>
+        <select id="fan-range">
+          <option value="shift">September 2019 to September 2020</option>
+          <option value="recent">The last two years</option>
+          <option value="all">Every origin, 2009 to 2026</option>
+        </select>
+      </div>
+    </div>
+
+    <figure class="chart-figure">
+      <div id="fan-chart" class="chart"></div>
+      <p class="readout" id="fan-readout"></p>
+      <div class="legend" id="fan-legend"></div>
+      <figcaption id="fan-caption"></figcaption>
+    </figure>
+
+    <div class="verdict">
+      <p>
+        <strong>A fortnight's forecast cannot see a shift that happens inside its own fortnight.</strong>
+        In late March 2020 demand leaves the band completely. The band chases it about two weeks
+        later, which is exactly the forecast horizon, and by the time it arrives the outcome has
+        fallen through the bottom instead. No amount of interval calibration fixes that, and the
+        next section is what it did to the guarantee.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="coverage-panel">
+    <h2>The promise, and the month it broke</h2>
+    <p class="section-lead">
+      A 90 percent interval claims to contain the outcome nine times in ten. This is the share it
+      actually contained, in a trailing window, for three ways of building the interval around the
+      same simple forecast. Width is underneath, because an interval can reach any coverage you
+      like by being wide enough, and coverage bought with width is not a result.
+    </p>
+
+    <div class="controls">
+      <div class="control">
+        <label for="coverage-nominal">Nominal level
+          <span class="hint">what the interval promises</span>
+        </label>
+        <select id="coverage-nominal"></select>
+      </div>
+      <div class="control">
+        <label for="coverage-window">Trailing window: <output id="coverage-window-out"></output>
+          <span class="hint">shorter reacts faster and is noisier</span>
+        </label>
+        <input type="range" id="coverage-window" min="4" max="52" step="1">
+      </div>
+    </div>
+
+    <figure class="chart-figure">
+      <div id="coverage-chart" class="chart"></div>
+      <p class="readout" id="coverage-readout"></p>
+      <div class="legend" id="coverage-legend"></div>
+      <figcaption id="coverage-caption"></figcaption>
+    </figure>
+
+    <div class="verdict">
+      <p>
+        <strong>Adaptive conformal is the method that is supposed to recover, and it does not.</strong>
+        It widens its interval when it starts missing, but it cannot widen past the largest error
+        in its own recent history, and March 2020 was larger than anything in the year before it.
+        It ran out of room rather than being too slow. Watch the widths below the coverage line:
+        they only rise after the fall, not during it.
+      </p>
+    </div>
+
+    <details class="disclose">
+      <summary>What conformal coverage actually promises, which is less than it sounds</summary>
+      <p>
+        Split, adaptive and aggregated conformal all calibrate an interval on past errors, and
+        their guarantee holds <strong>on average over time</strong>, and only if the errors are
+        exchangeable: loosely, that tomorrow's mistakes look like a shuffled version of last
+        year's. Demand through a pandemic is not exchangeable, so no coverage is promised in any
+        one window, and none was delivered.
+      </p>
+      <p>
+        That is not a failure of the implementation, and the chart is the honest way to show it.
+        A whole-period average would report 0.90 and say nothing at all about the month that
+        mattered. The remedy this project does not attempt is named in the repository's methods
+        document rather than quietly tried.
+      </p>
+    </details>
+  </section>
+
+  <section class="section" id="reconciliation-panel">
+    <h2>Do the parts add up to the whole?</h2>
+    <p class="section-lead" id="reconciliation-lede"></p>
+
+    <div class="table-wrap">
+      <table id="reconciliation-table">
+        <caption>
+          Change in CRPS against the unreconciled forecast, and coverage at the nominal level.
+          CRPS is a loss, so negative is better. Every number is a point estimate with a 95
+          percent moving-block bootstrap interval over forecast origins.
+        </caption>
+      </table>
+    </div>
+
+    <div class="assumption" id="reconciliation-note"></div>
+  </section>
+
+  <section class="section" id="staffing-panel">
+    <h2>The forecast as a rota, priced</h2>
+    <p class="section-lead" id="staffing-lede"></p>
+
+    <div class="controls">
+      <div class="control wide">
+        <label for="service-level">Service level: staff to <output id="service-level-out"></output>
+          <span class="hint">the share of days the crews on shift are enough; higher costs more to hold and less to miss</span>
+        </label>
+        <input type="range" id="service-level" min="0" max="1" step="1">
+      </div>
+    </div>
+
+    <section class="headline" id="staffing-headline" aria-live="polite"></section>
+
+    <div class="table-wrap">
+      <table id="staffing-table">
+        <caption>
+          Units staffed a day and what that cost, summed over the 31 dispatch areas and averaged
+          over the days ahead, against an oracle that knew each day's demand and so cost nothing.
+          Every number carries its 95 percent interval.
+        </caption>
+      </table>
+    </div>
+
+    <div class="assumption">
+      <p>
+        <strong>The slider moves the table exactly</strong>, because the table was computed at each
+        of its stops. It also moves the dashed line on the forecast chart at the top of the page,
+        and that line is interpolated between the bands that were exported: it is there to be
+        read, not measured.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="honesty">
+    <h2>What this page does not show</h2>
+    <ul>
+      <li>
+        <strong>Nothing here is live.</strong> Every number comes from one rolling-origin backtest
+        over published data, and the repository's README carries the same numbers as tables,
+        including the models this page does not draw.
+      </li>
+      <li>
+        <strong>Coverage is measured on one forecast, not on all of them.</strong> The three
+        conformal methods wrap the same simple seasonal baseline, so what the chart compares is
+        the three ways of building an interval rather than three different forecasters.
+      </li>
+      <li>
+        <strong>The decision inputs are illustrative.</strong> They are a small table in the
+        repository, not constants buried in code, and every number in the rota moves when they are
+        replaced with yours.
+      </li>
+      <li>
+        <strong>This is daily demand, not a shift rota.</strong> Intraday patterns, skill mix and
+        crew scheduling are all real problems and none of them is solved here.
+      </li>
+    </ul>
+  </section>
 
 </main>
+
+<footer class="foot">
+  <div class="foot-inner">
+    <p>
+      Source, method, the full results and the models this page leaves out:
+      <a href="https://github.com/Peter-A-P/capacity-planning-forecaster">github.com/Peter-A-P/capacity-planning-forecaster</a>
+    </p>
+    <ul>
+      <li>Data: NYC EMS incident dispatch data, published by the City of New York</li>
+      <li>Type: Newsreader and Inter, SIL Open Font License, served from this host</li>
+    </ul>
+  </div>
+</footer>
 <script src="app.js"></script>
 </body>
 </html>

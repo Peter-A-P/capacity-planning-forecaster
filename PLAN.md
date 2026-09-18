@@ -389,9 +389,17 @@ rather than in a terminal. Three deviations from the line above, all deliberate:
   changed without re-exporting. It is the only arithmetic in the JavaScript, and it mirrors
   `headroom.report.charts.rolling_mean`, which is now public for that reason.
 
-`headroom serve` serves the site with the headers in `dashboard/staticwebapp.config.json`.
-A plain file server sends none of them, which on project 01 hid a broken chart on the live
-site for two weeks while every local check looked correct.
+`headroom serve` serves the site with the headers **and the content types** in
+`dashboard/staticwebapp.config.json`. A plain file server sends neither, which on project 01
+hid a broken chart on the live site for two weeks while every local check looked correct.
+
+**The page is part of peterparker.ca even though another host serves it**, so it takes that
+site's palette, its two fonts and the 3px rule over the page, exactly as 01's demo does. The
+fonts are copied into `dashboard/fonts/` rather than linked from the main site: the content
+security policy allows no off-origin request, and a font is a request. Both are SIL Open
+Font License and `dashboard/fonts/LICENSE.txt` records where they came from. Chart colours
+are named in the stylesheet and never in the JavaScript, so one palette follows the page into
+dark mode.
 
 ### Tests that matter
 
