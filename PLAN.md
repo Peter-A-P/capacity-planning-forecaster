@@ -216,6 +216,13 @@ a third trained model and blur the one question it is here to answer.
 Before it is committed to: TimesFM must install and run under Python 3.13, which this
 project requires. If it does not, that is recorded and the addition is dropped.
 
+**Gate passed, 2026-09-17.** It installs and runs under Python 3.13. One clarification the
+pin above needs: the 2.5 that is pinned is the **checkpoint**, and the PyPI package
+`timesfm` is numbered separately, so the Apache 2.0 2.5 weights are loaded through the
+3.0.x library, which is the line that still exposes them. `docs/methods.md`, "As built",
+records that and the settings; the licence and the leak are unaffected. Built as
+`headroom.models.foundation` and run by `headroom zeroshot`.
+
 ### 2.7b Gradient boosting, to separate global learning from deep learning (added 2026-09-13)
 
 A global LightGBM model is added on Peter's decision. It was planned through Nixtla

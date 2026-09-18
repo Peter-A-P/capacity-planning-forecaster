@@ -12,6 +12,7 @@ then the expensive model comparison.
     headroom timings             measure cost per origin before committing to a run
     headroom boost               the global LightGBM model (hours; resumable)
     headroom neural              N-HiTS or PatchTST, refitted on a schedule (hours; resumable)
+    headroom zeroshot            TimesFM 2.5, pretrained, nothing fitted (hours; resumable)
     headroom reconcile           MinT on a model's medians: coherence and the change in CRPS
     headroom decide              staffing from each forecast, priced against an oracle
     headroom score               score finished checkpoints as skill against the baseline
@@ -49,6 +50,7 @@ from headroom.data.nyc_ems import (
     fetch_daily_counts,
 )
 from headroom.hierarchy.build import Panel, build
+from headroom.models import foundation
 from headroom.models.baselines import SeasonalNaive
 from headroom.reconcile.mint import ReconciledMedians
 from headroom.score import levels as lv
@@ -69,9 +71,16 @@ DEFAULT_OUT = Path("backtest/out")
 #: Nominal coverage the single-number tables report, matching PLAN.md section 1.
 MAIN_NOMINAL = 0.90
 
-#: Models whose checkpoints hold a median only, and the one-level grid they are stored on.
-POINT_MODELS = frozenset({"LightGBM"})
-POINT_LEVELS = np.array([0.5])
+#: Models scored on a conformal distribution built from their own past errors rather than
+#: on quantiles of their own, and the grid each one's checkpoint holds. LightGBM forecasts
+#: a median and nothing else; TimesFM forecasts the deciles, which do not reach the 0.025
+#: and 0.975 this project reports, so the median is taken from them and the rest is kept
+#: only to report the one interval the model can produce unaided (`docs/methods.md`).
+STORED_LEVELS: Final[dict[str, npt.NDArray[np.float64]]] = {
+    "LightGBM": np.array([0.5]),
+    foundation.NAME: foundation.DECILES,
+}
+POINT_MODELS = frozenset(STORED_LEVELS)
 
 #: Models PLAN.md section 1 promises a row for, as (network name, label when not built).
 #: A row is written as "not built" only while no checkpoint for that network is reported,
@@ -81,6 +90,30 @@ PROMISED_ROWS: Final[tuple[tuple[str, str], ...]] = (
     ("PatchTST", "PatchTST"),
     ("TimesFM", "TimesFM, zero-shot (clean window only)"),
 )
+
+
+def _stored_levels(name: str) -> npt.NDArray[np.float64]:
+    """The quantile grid a model's checkpoint holds.
+
+    Args:
+        name: The model's checkpoint name.
+
+    Returns:
+        The model's own grid if it has one in :data:`STORED_LEVELS`, else the scoring grid.
+    """
+    return STORED_LEVELS.get(name, lv.SCORING)
+
+
+def _median_at(levels: npt.NDArray[np.float64]) -> int:
+    """Where the median sits on a quantile grid.
+
+    Args:
+        levels: A quantile grid.
+
+    Returns:
+        The index of the level closest to 0.5.
+    """
+    return int(np.abs(levels - 0.5).argmin())
 
 
 def output_dir() -> Path:
@@ -432,7 +465,7 @@ def boost(
         model.name,
         origins,
         panel.hierarchy.n_nodes,
-        POINT_LEVELS,
+        _stored_levels(model.name),
     )
     typer.echo(f"{len(origins)} origins at step {step}, {model.name}, output {out}")
     typer.echo(f"resuming from origin {checkpoint.n_done} of {len(origins)}")
@@ -571,6 +604,82 @@ def neural_label(name: str, refit_every: int) -> str:
         For example ``"N-HiTS-refit13"``.
     """
     return f"{name}-refit{refit_every}"
+
+
+@app.command()
+def zeroshot(
+    step: Annotated[int, typer.Option(help="Days between origins.")] = 7,
+    window: Annotated[
+        int, typer.Option(help="Training window; 0 expands.")
+    ] = TRAIN_WINDOW_DAYS,
+    save_every: Annotated[int, typer.Option(help="Origins between checkpoint writes.")] = 25,
+) -> None:
+    """Run TimesFM 2.5 zero-shot over every origin, resumably.
+
+    Nothing is trained: the weights are Google's, downloaded once, and each origin is
+    inference over the same 1,095-day window every other model gets. The checkpoint holds
+    the model's nine deciles; `headroom score` takes the median from them and builds the
+    distribution it is scored on from its own past errors.
+
+    **This run covers the whole backtest, and most of it is exposed to the leak** described
+    in PLAN.md section 2.7a: the weights postdate those origins. The result is the clean
+    window, `headroom score --from-day`; the exposed numbers are labelled and never pooled
+    with it.
+
+    Args:
+        step: Days between origins.
+        window: Trailing training window in days, or 0 to let it expand.
+        save_every: Origins between checkpoint writes.
+    """
+    from headroom.backtest.store import open_checkpoint
+    from headroom.models.foundation import PRETRAINING_ENDS, ZeroShotTimesFM, clean_origins
+
+    panel, origins = _schedule(step, window)
+    model = ZeroShotTimesFM(horizon=origins.horizon, context=window or TRAIN_WINDOW_DAYS)
+    out = output_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    checkpoint = open_checkpoint(
+        out / _checkpoint_name(model.name, step, origins),
+        model.name,
+        origins,
+        panel.hierarchy.n_nodes,
+        _stored_levels(model.name),
+    )
+    listed = list(origins)
+    clean = clean_origins([origin.day for origin in listed], PRETRAINING_ENDS)
+    typer.echo(
+        f"{len(origins)} origins at step {step}, {model.name} zero-shot, output {out}\n"
+        f"clean window: origins {clean} to {len(origins) - 1} ({listed[clean].day} onward), "
+        f"{len(origins) - clean} of {len(origins)}; the rest are exposed to the leak"
+    )
+    typer.echo(f"resuming from origin {checkpoint.n_done} of {len(origins)}")
+
+    started = time.perf_counter()
+    model.load()
+    typer.echo(f"loaded and compiled in {time.perf_counter() - started:.0f}s")
+
+    started = time.perf_counter()
+    computed = 0
+    for origin in origins:
+        if checkpoint.done[origin.number]:
+            continue
+        began = time.perf_counter()
+        deciles = model.forecast(
+            panel.values[:, origin.train], origins.horizon, _stored_levels(model.name)
+        )
+        elapsed = time.perf_counter() - began
+        checkpoint.record(origin.number, deciles, elapsed)
+        computed += 1
+        if computed % save_every == 0:
+            checkpoint.save()
+            rate = (time.perf_counter() - started) / computed
+            left = (len(origins) - checkpoint.n_done) * rate / 3600
+            typer.echo(
+                f"  origin {origin.number + 1}/{len(origins)} ({origin.day}) {elapsed:.0f}s  "
+                f"mean {rate:.0f}s  ~{left:.1f}h left"
+            )
+    checkpoint.save()
+    typer.echo(f"done in {(time.perf_counter() - started) / 3600:.2f}h")
 
 
 @app.command()
@@ -780,8 +889,7 @@ def _complete_checkpoint(name: str, step: int, origins: Origins, n_nodes: int) -
     if not path.exists():
         typer.echo(f"no checkpoint at {path}; run the model first, or set {OUT_VARIABLE}")
         raise typer.Exit(code=1)
-    levels = POINT_LEVELS if name in POINT_MODELS else lv.SCORING
-    checkpoint = open_checkpoint(path, name, origins, n_nodes, levels)
+    checkpoint = open_checkpoint(path, name, origins, n_nodes, _stored_levels(name))
     if not checkpoint.complete:
         typer.echo(f"{name}: {checkpoint.n_done} of {len(origins)} origins done")
         raise typer.Exit(code=1)
@@ -796,12 +904,13 @@ def _distribution(
 ) -> npt.NDArray[np.float64]:
     """Return a model's forecast distribution on the scoring grid over every origin.
 
-    A median-only model is given the conformal predictive distribution from its own past
-    errors, which is ``nan`` before the first origin with a full calibration window.
+    A model in :data:`STORED_LEVELS` is given the conformal predictive distribution around
+    its own median, from its own past errors, which is ``nan`` before the first origin with
+    a full calibration window.
 
     Args:
         name: The model's name.
-        quantiles: Its checkpoint's forecasts.
+        quantiles: Its checkpoint's forecasts, on the grid :data:`STORED_LEVELS` gives it.
         actual: What happened, shape ``(n_origins, n_nodes, horizon)``.
         step: Days between origins.
 
@@ -812,7 +921,8 @@ def _distribution(
 
     if name not in POINT_MODELS:
         return quantiles
-    return predictive_quantiles(quantiles[..., 0], actual, lv.SCORING, step).quantiles
+    median = quantiles[..., _median_at(_stored_levels(name))]
+    return predictive_quantiles(median, actual, lv.SCORING, step).quantiles
 
 
 def _mint_quantiles(
@@ -954,6 +1064,9 @@ def score(
     window: Annotated[
         int, typer.Option(help="Training window; 0 expands.")
     ] = TRAIN_WINDOW_DAYS,
+    from_day: Annotated[
+        str, typer.Option(help="Score only origins on or after this day, ISO format.")
+    ] = "",
 ) -> None:
     """Score finished checkpoints as skill against seasonal naive, and paired.
 
@@ -961,25 +1074,30 @@ def score(
     number carries a 95 percent block-bootstrap interval.
 
     Coverage for the statistical models is of their own prediction quantiles, with no
-    conformal step, so no coverage guarantee is claimed. A model that forecasts only a
-    median (LightGBM) is given a conformal predictive distribution from its own past
-    errors (`headroom.conformal.predictive`), which exists only from the first origin
-    with a full calibration window. When one is included, **every model is scored on the
-    origins from that one onward**, so the tables stay paired and the numbers differ from
-    a run without it.
+    conformal step, so no coverage guarantee is claimed. A model whose checkpoint does not
+    hold the scoring grid (LightGBM, TimesFM) is given a conformal predictive distribution
+    around its own median from its own past errors (`headroom.conformal.predictive`),
+    which exists only from the first origin with a full calibration window. When one is
+    included, **every model is scored on the origins from that one onward**, so the tables
+    stay paired and the numbers differ from a run without it.
+
+    ``--from-day`` is how TimesFM's clean window is scored: the origins whose whole horizon
+    falls after its pretraining data ends (PLAN.md section 2.7a). It moves every model
+    listed onto that window, because a comparison across two different sets of origins is
+    not a comparison.
 
     Args:
         models: Comma-separated names of models whose checkpoints are complete.
         against: The model each other model's CRPS is differenced against, per origin.
         step: Days between origins the checkpoints were built with.
         window: Trailing training window they were built with, or 0 for expanding.
+        from_day: Score only origins on or after this day.
 
     Raises:
-        typer.Exit: A checkpoint is missing or incomplete.
+        typer.Exit: A checkpoint is missing or incomplete, or no origin is that late.
     """
     from headroom.backtest.run import score_forecasts
-    from headroom.backtest.store import open_checkpoint
-    from headroom.conformal.predictive import first_valid_origin, predictive_quantiles
+    from headroom.conformal.predictive import first_valid_origin
 
     wanted = [name.strip() for name in models.split(",") if name.strip()]
     panel, origins = _schedule(step, window)
@@ -997,14 +1115,26 @@ def score(
     point_models = [name for name in wanted if name in POINT_MODELS]
     start = first_valid_origin(origins.horizon, step) if point_models else 0
     listed = list(origins)
+    if from_day:
+        # The conformal window still ends at the origin before each forecast, so a later
+        # start drops origins from the front of the scores and changes nothing about how
+        # any forecast was produced.
+        wanted_from = date.fromisoformat(from_day)
+        later = [origin.number for origin in listed if origin.day >= wanted_from]
+        if not later:
+            typer.echo(
+                f"no origin falls on or after {wanted_from}; the last is {listed[-1].day}"
+            )
+            raise typer.Exit(code=1)
+        start = max(start, later[0])
     typer.echo(
         f"origins {start} to {len(origins) - 1} of {len(origins)} at step {step} "
         f"({listed[start].day} to {listed[-1].day}), output {out}"
     )
     if point_models:
         typer.echo(
-            f"{', '.join(point_models)}: median only, distribution from its own errors over "
-            "the previous 52 origins; the only model given holiday features"
+            f"{_listing(point_models)}: scored on a conformal distribution around the "
+            "median, built from its own errors over the previous 52 origins"
         )
 
     actual = np.stack([panel.values[:, origin.target] for origin in origins])
@@ -1013,21 +1143,8 @@ def score(
     )
     everything: dict[str, Scores] = {}
     for name in wanted:
-        levels = POINT_LEVELS if name in POINT_MODELS else lv.SCORING
-        checkpoint = open_checkpoint(
-            paths[name], name, origins, panel.hierarchy.n_nodes, levels
-        )
-        if not checkpoint.complete:
-            typer.echo(
-                f"{name}: {checkpoint.n_done} of {len(origins)} origins done; not scored"
-            )
-            raise typer.Exit(code=1)
-        if name in POINT_MODELS:
-            quantiles = predictive_quantiles(
-                checkpoint.quantiles[..., 0], actual, lv.SCORING, step
-            ).quantiles
-        else:
-            quantiles = checkpoint.quantiles
+        checkpoint = _complete_checkpoint(name, step, origins, panel.hierarchy.n_nodes)
+        quantiles = _distribution(name, checkpoint.quantiles, actual, step)
         everything[name] = score_forecasts(
             name=name,
             hierarchy=panel.hierarchy,

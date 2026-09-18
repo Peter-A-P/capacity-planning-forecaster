@@ -1071,6 +1071,42 @@ other model's (split, adaptive, aggregated). Its own deciles are kept and may be
 beside the conformal intervals at 80 percent, the one level they reach, but they are not
 the result.
 
+### As built, 2026-09-17
+
+**The gate is passed.** `PLAN.md` section 2.7a made the whole addition conditional on
+TimesFM installing and running under Python 3.13, which this project requires. It does,
+on machine B under Windows: the weights load in about 15 seconds and 37 series forecast
+in one call.
+
+**The library and the checkpoint are versioned separately, and only the checkpoint was
+pinned.** The plan pins TimesFM **2.5** because 2.5's weights are Apache 2.0 where 3.0's
+are not. The PyPI package `timesfm` has its own numbering, and the line that still exposes
+`TimesFM_2p5_200M_torch` is 3.0.x, so the 2.5 checkpoint is loaded through the 3.0
+library. `pyproject.toml` therefore pins `timesfm>=3.0,<4.0`, and the ceiling is a real
+one rather than a habit: a 4.x that drops the 2.5 loader is exactly the change that would
+break this. Nothing about the weights, the licence or the leak changes.
+
+**Settings.** The model card's own `ForecastConfig` (`normalize_inputs`,
+`use_continuous_quantile_head`, `force_flip_invariance`, `infer_is_positive`,
+`fix_quantile_crossing`), with two values that are this project's rather than the card's:
+a 1,095-day context, the window every other model here is given, and a 14-day horizon.
+Nothing was tuned on this backtest, for the same reason as every other model.
+
+**What it sees.** Demand only, one series at a time, with no dates, no calendar, no
+holidays and no series identity, so nothing crosses between the 37 series at inference
+either. That is less than LightGBM is given and the same as the statistical models.
+
+**What is stored.** Its nine deciles, on the grid `headroom.models.foundation.DECILES`.
+The median of those is the forecast and the distribution it is scored on is conformal,
+from its own past errors, as `PLAN.md` section 2.7a requires. The other eight deciles cost
+almost nothing to keep and are what the 80 percent interval, the one the model can produce
+unaided, is read from.
+
+**It is deterministic.** Two identical calls return identical forecasts, asserted in
+`tests/test_foundation.py`. Inference with no sampling ought to be, but a zero-shot model
+that moved between runs would make every number here unreproducible, and this is the
+cheapest place to find that out.
+
 Sources: [TimesFM 2.5 model card](https://huggingface.co/google/timesfm-2.5-200m-pytorch),
 [TimesFM 3.0 model card](https://huggingface.co/google/timesfm-3.0-pytorch),
 [TimesFM 2.0 model card](https://huggingface.co/google/timesfm-2.0-500m-pytorch),

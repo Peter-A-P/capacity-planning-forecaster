@@ -14,13 +14,14 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
 repository at rev. 5). Two-week build; this is day 2.
 
-**248 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**260 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
 |---|---:|---|
 | `test_backtest.py` | 39 | Origins and look-ahead, refit schedule, seasonal naive, the runner, checkpointing |
 | `test_neural.py` | 10 | N-HiTS and PatchTST quantiles, forecasting between refits, determinism; skipped without the neural extra |
+| `test_foundation.py` | 12 | TimesFM's clean window, the grid it is stored on, and where the scorer finds its median; the two that need the weights are marked slow |
 | `test_boosting.py` | 26 | LightGBM rows never read past their anchor, target-day calendar, the fit |
 | `test_predictive.py` | 7 | The predictive distribution's feedback rule, ranks, coverage, burn-in |
 | `test_reconcile.py` | 9 | MinT coherence for any input, equality with hierarchicalforecast, feedback rule |
@@ -67,12 +68,16 @@ code. What is genuinely not built starts at TimesFM.
   0.900 from its own quantiles, the best calibrated model here. About 27.3 hours of
   fitting. Needs `uv sync --extra neural`, and on machine B `UV_LINK_MODE=copy`. The
   neural tests skip where NeuralForecast is not installed, which includes CI.
-- **TimesFM, zero-shot** (added to the plan 2026-09-13). `PLAN.md` section 2.7a. Week 2.
-  First check it installs under Python 3.13. Its pretraining postdates most origins, so
-  it is scored separately on a clean window after its pretraining ends; read 2.7a before
-  reporting any TimesFM number. Version pinned to 2.5 and the corpus researched
-  (`docs/methods.md`, TimesFM section): clean window from 2023-12-01, cross-check from
-  2025-09-15, intervals from conformal around its median.
+- **TimesFM, zero-shot: built and running, not yet scored.** `PLAN.md` section 2.7a,
+  `headroom zeroshot`, `headroom.models.foundation`. The gate the plan set is passed: it
+  installs and runs under Python 3.13 (`docs/methods.md`, "As built"). The 964-origin run
+  started 2026-09-17 21:17. **Read 2.7a before reporting any TimesFM number.** Its
+  pretraining postdates most origins, so the run covers the whole backtest but only the
+  **clean window is the result**: origins 831 to 963, 2023-12-04 onward, 133 of 964,
+  scored with `headroom score --from-day 2023-11-30`. The cross-check window is from the
+  model's release, `--from-day 2025-09-15`. The rest is labelled exposed and never pooled
+  with either. Its checkpoint holds its nine deciles; the median is the forecast and the
+  scored distribution is conformal, as LightGBM's is.
 - **Reconciliation: point MinT done, probabilistic not built.** `headroom reconcile
   --model ETS`: coherence error 515 incidents to 0; city CRPS -7.05 [-8.24, -4.80],
   borough -0.97 [-1.13, -0.69], dispatch area unchanged. Still to build: coherent sample
