@@ -431,6 +431,65 @@ What this says:
   model with both did not get it. If they tie, `PLAN.md` section 9's candidate 3 is supported
   twice over.
 
+### Where in the distribution each model wins, measured 2026-09-18
+
+`headroom score --models ETS,LightGBM --pinball`, same origins as the table above. CRPS is
+twice the integral of the pinball loss over all quantiles, so a CRPS tie can hide two models
+that win in different places. Here it does. Skill is against seasonal naive at the same
+quantile, so higher is better and zero is no better than the baseline.
+
+**ETS: pinball skill against seasonal naive, per quantile**
+
+| Quantile | City | Borough | Dispatch area |
+|---|---|---|---|
+| 0.010 | +0.3486 [+0.2731, +0.4124] | +0.3630 [+0.3074, +0.4123] | +0.3742 [+0.3428, +0.4106] |
+| 0.025 | +0.2641 [+0.2100, +0.3213] | +0.2902 [+0.2512, +0.3328] | +0.3283 [+0.3103, +0.3488] |
+| 0.050 | +0.2256 [+0.1831, +0.2684] | +0.2594 [+0.2328, +0.2884] | +0.3064 [+0.2951, +0.3180] |
+| 0.100 | +0.2034 [+0.1723, +0.2343] | +0.2409 [+0.2226, +0.2589] | +0.2905 [+0.2834, +0.2973] |
+| 0.250 | +0.1881 [+0.1693, +0.2071] | +0.2256 [+0.2148, +0.2370] | +0.2717 [+0.2658, +0.2773] |
+| 0.500 | +0.1831 [+0.1698, +0.2009] | +0.2113 [+0.2020, +0.2228] | +0.2518 [+0.2449, +0.2578] |
+| 0.750 | +0.1649 [+0.1487, +0.1884] | +0.1932 [+0.1824, +0.2075] | +0.2324 [+0.2240, +0.2402] |
+| 0.900 | +0.1530 [+0.1311, +0.1827] | +0.1775 [+0.1651, +0.1950] | +0.2138 [+0.2018, +0.2247] |
+| 0.950 | +0.1493 [+0.1253, +0.1810] | +0.1693 [+0.1547, +0.1883] | +0.2001 [+0.1844, +0.2144] |
+| 0.975 | +0.1441 [+0.1180, +0.1806] | +0.1629 [+0.1463, +0.1835] | +0.1835 [+0.1607, +0.2028] |
+| 0.990 | +0.1553 [+0.1162, +0.2037] | +0.1565 [+0.1392, +0.1829] | +0.1567 [+0.1192, +0.1881] |
+
+**LightGBM: pinball skill against seasonal naive, per quantile**
+
+| Quantile | City | Borough | Dispatch area |
+|---|---|---|---|
+| 0.010 | +0.1118 [-0.0653, +0.2466] | +0.2160 [+0.0935, +0.3028] | +0.2948 [+0.2553, +0.3280] |
+| 0.025 | +0.1236 [+0.0035, +0.2142] | +0.2211 [+0.1383, +0.2811] | +0.2896 [+0.2637, +0.3126] |
+| 0.050 | +0.1609 [+0.0734, +0.2316] | +0.2358 [+0.1795, +0.2787] | +0.2915 [+0.2720, +0.3080] |
+| 0.100 | +0.1840 [+0.1199, +0.2350] | +0.2428 [+0.2021, +0.2728] | +0.2851 [+0.2705, +0.2973] |
+| 0.250 | +0.2021 [+0.1546, +0.2383] | +0.2404 [+0.2112, +0.2618] | +0.2722 [+0.2604, +0.2817] |
+| 0.500 | +0.1965 [+0.1582, +0.2272] | +0.2275 [+0.2038, +0.2461] | +0.2550 [+0.2439, +0.2641] |
+| 0.750 | +0.1891 [+0.1540, +0.2199] | +0.2128 [+0.1874, +0.2338] | +0.2355 [+0.2220, +0.2459] |
+| 0.900 | +0.1673 [+0.1273, +0.2018] | +0.1865 [+0.1549, +0.2137] | +0.2084 [+0.1882, +0.2237] |
+| 0.950 | +0.0909 [+0.0027, +0.1582] | +0.1057 [+0.0282, +0.1650] | +0.1472 [+0.0993, +0.1824] |
+| 0.975 | -0.0027 [-0.1272, +0.0926] | +0.0096 [-0.0926, +0.0813] | +0.0635 [+0.0004, +0.1110] |
+| 0.990 | +0.0058 [-0.1039, +0.1202] | +0.0026 [-0.0815, +0.0846] | +0.0400 [-0.0254, +0.0977] |
+
+What this says, and it is not visible in the CRPS column:
+
+* **The two models are mirror images.** ETS is at its best in the lower tail (+0.349 at the
+  1st percentile of the city) and weakens steadily as the quantile rises. LightGBM is the
+  other way round: weakest at the bottom, best around the quartiles, and then it falls off
+  a cliff above the 90th percentile.
+* **LightGBM is no better than seasonal naive in the upper tail.** At the 97.5th percentile
+  its city skill is -0.0027 [-0.1272, +0.0926] and its borough skill +0.0096 [-0.0926,
+  +0.0813]; both intervals contain zero. Its conformal distribution is built from its own
+  errors over the previous 52 origins, so the width of its upper tail is set by the worst
+  misses in that year rather than by anything about the day being forecast.
+* **That is the mechanism behind a number already in the decision table.** Staffing is set
+  from an upper quantile, and LightGBM costs about 15 percent more than ETS at the 95
+  percent service level while tying it at 80. The rota is priced where LightGBM is weakest,
+  and until this table that looked like noise.
+
+The lesson generalises past this pair: **a model chosen on CRPS is chosen on the whole
+distribution, and a rota is set from one end of it.** Where the decision reads a single
+quantile, score that quantile.
+
 ### What it sees, and the one advantage it has
 
 One model across all 37 series, refitted at every origin on the same 1,095-day trailing

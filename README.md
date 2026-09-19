@@ -132,6 +132,16 @@ Inputs are illustrative and replaceable ([inputs/decision.toml](inputs/decision.
 |  | PatchTST, refitted every 13 weeks | 490.2 [475.9, 503.9] | 87.52 [84.67, 91.52] | +4.53 [+2.92, +6.22] |
 <!-- report:end -->
 
+**A tie on CRPS can hide two models that win in different places.** CRPS is twice the
+integral of the pinball loss over every quantile, so it sums the whole distribution into one
+number. Read along the distribution instead (`headroom score --pinball`, tables in
+[docs/methods.md](docs/methods.md)) and ETS and LightGBM, which tie above, turn out to be
+mirror images: ETS is strongest in the lower tail and weakens as the quantile rises, while
+LightGBM is strongest around the quartiles and **no better than seasonal naive above the
+95th percentile** (city skill -0.003 [-0.127, +0.093] at the 97.5th). That matters because a
+rota is set from an upper quantile, and it is why LightGBM costs about 15 percent more than
+ETS at the 95 percent service level in the table below while tying it at 80.
+
 ## Coverage through a real shift, which is the finding
 
 ![Rolling coverage at the city against nominal, at three nominal levels, for split,

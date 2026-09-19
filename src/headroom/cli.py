@@ -1089,6 +1089,10 @@ def score(
     from_day: Annotated[
         str, typer.Option(help="Score only origins on or after this day, ISO format.")
     ] = "",
+    pinball: Annotated[
+        bool,
+        typer.Option(help="Also print pinball skill at every reporting quantile, as markdown."),
+    ] = False,
 ) -> None:
     """Score finished checkpoints as skill against seasonal naive, and paired.
 
@@ -1114,6 +1118,10 @@ def score(
         step: Days between origins the checkpoints were built with.
         window: Trailing training window they were built with, or 0 for expanding.
         from_day: Score only origins on or after this day.
+        pinball: Also print pinball skill at each reporting quantile, per level, as a
+            markdown table. CRPS is twice the integral of the pinball loss over all
+            quantiles, so this is the same measurement read across the distribution
+            instead of summed: it says where in the distribution a model wins.
 
     Raises:
         typer.Exit: A checkpoint is missing or incomplete, or no origin is that late.
@@ -1183,6 +1191,9 @@ def score(
     for scores in everything.values():
         paired = reference if reference is not None and reference is not scores else None
         _print_scores(scores, baseline_scores, paired)
+    if pinball:
+        for scores in everything.values():
+            _print_pinball(scores, baseline_scores)
 
 
 #: Where the charts are written, and the period they shade as the demand shift.
@@ -2424,6 +2435,34 @@ def _from_origin(scores: Scores, start: int) -> Scores:
         widths=scores.widths[start:],
         reporting_quantiles=scores.reporting_quantiles[start:],
     )
+
+
+def _print_pinball(scores: Scores, baseline: Scores) -> None:
+    """Print pinball skill at every reporting quantile, per level, as a markdown table.
+
+    CRPS is twice the integral of the pinball loss over all quantiles, so the headline
+    column and this table are the same measurement: one summed across the distribution and
+    one read along it. The table is what says whether a model's win is in the middle, where
+    a planner reads the median, or in the upper tail, where the rota is actually set.
+
+    Args:
+        scores: The model's scores.
+        baseline: Seasonal naive on the same origins.
+    """
+    from headroom.report import tables
+
+    rows = []
+    for at, level in enumerate(lv.REPORTING):
+        row = [f"{level:.3f}"]
+        for name in LEVEL_NAMES:
+            skill = skill_interval(
+                scores.by_origin(scores.pinball[..., at], name),
+                baseline.by_origin(baseline.pinball[..., at], name),
+            )
+            row.append(tables.number(tables.Estimate.of(skill), places=4, signed=True))
+        rows.append(row)
+    typer.echo(f"\n**{scores.model}: pinball skill against seasonal naive, per quantile**\n")
+    typer.echo(tables.markdown_table(["Quantile", *LEVEL_NAMES.values()], rows))
 
 
 def _print_scores(scores: Scores, baseline: Scores | None, against: Scores | None) -> None:

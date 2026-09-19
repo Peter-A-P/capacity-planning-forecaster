@@ -500,7 +500,7 @@ README's "What did not work" section is where it ends up.
 ## 10. Definition of done
 
 - [x] Seasonal naive and statistical baselines reported first, with every later result as skill against them
-- [ ] CRPS and pinball loss per quantile, per method and level, with block-bootstrap CIs
+- [x] CRPS and pinball loss per quantile, per method and level, with block-bootstrap CIs
 - [x] Empirical coverage at three nominal levels plotted in a rolling window through the 2020 shift, adaptive against split conformal, with widths
 - [x] Conformal assumptions stated in the README beside the chart
 - [x] MinT and probabilistic reconciliation; coherence verified at every origin; effect on accuracy per level reported

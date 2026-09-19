@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, brought forward from a mid-2027 slot (`PLAN.md` header). Two-week
 build.
 
-**307 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**309 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -32,7 +32,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_data.py` | 20 | The loader, the borough judgement call, checks, the calendar |
 | `test_stats_models.py` | 16 | The StatsForecast wrapper and the batched path |
 | `test_hierarchy.py` | 14 | The summing matrix and coherence |
-| `test_cli.py` | 6 | `HEADROOM_OUT`, and checkpoint names shared by `stats` and `score` |
+| `test_cli.py` | 8 | `HEADROOM_OUT`, checkpoint names shared by `stats` and `score`, and the per-quantile pinball table (a model scored against itself has no skill at any quantile) |
 | `test_charts.py` | 10 | The trailing window, the refusals that stop a series being drawn against the wrong dates, and that a real PNG appears |
 | `test_report.py` | 42 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
 | `test_export.py` | 20 | The dashboard payloads against their schema, `nan` never reaching JSON, an interval that does not contain its point refused, and the built page: every file it asks for is published, and it carries nothing its own content security policy would refuse |
@@ -53,10 +53,10 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 ### The models, and what is still missing
 
-Every model named in `PLAN.md` section 1 is now built and scored, and so is the whole
-reconciliation. The first entries are here because the verdict on them is the point, not
-the code. What is genuinely not built is conformal on the reconciled forecasts, and the
-dashboard, which waits on the Intervention Targeting Engine's static pattern.
+Every model named in `PLAN.md` section 1 is built and scored, and so is the whole
+reconciliation, the decision layer and the dashboard. The first entries are here because
+the verdict on them is the point, not the code. The one thing in the plan's window that is
+genuinely not built is conformal on the reconciled forecasts.
 
 - **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
   scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
@@ -99,6 +99,15 @@ dashboard, which waits on the Intervention Targeting Engine's static pattern.
   (illustrative). At the cost-implied 80 percent, ETS costs 65.76 a day against seasonal
   naive's 85.13; LightGBM ties ETS at 80 and costs 15 percent more at 95. N-HiTS costs
   81.92 at 80 percent, 25 percent more than ETS.
+- **Where each model wins in the distribution: measured 2026-09-18.** `headroom score
+  --pinball` prints pinball skill at all eleven reporting quantiles per level, as markdown.
+  It is the last box of `PLAN.md` section 10 that was open on the measurement side, and it
+  paid for itself: ETS and LightGBM tie on CRPS and are mirror images underneath. ETS is
+  strongest in the lower tail and weakens as the quantile rises; LightGBM is strongest
+  around the quartiles and is **no better than seasonal naive above the 95th percentile**
+  (city -0.0027 [-0.1272, +0.0926] at 0.975). The rota is set from an upper quantile, so
+  that is the mechanism behind LightGBM costing 15 percent more at the 95 percent service
+  level while tying at 80. Tables in `docs/methods.md`.
 - **Report command: done 2026-09-15.** `headroom report` scores every
   finished checkpoint on origins 53 to 963, picks the best statistical model by CRPS skill
   averaged over the levels (ETS +0.214, Theta +0.204, AutoARIMA +0.197, MSTL +0.098),
