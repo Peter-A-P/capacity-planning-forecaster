@@ -28,21 +28,23 @@
     </p>
     <div class="hero-points">
       <div class="point">
-        <span class="point-figure" id="hero-coverage">&mdash;</span>
+        <span class="point-figure up" id="hero-coverage">&mdash;</span>
         <span class="point-unit" id="hero-coverage-unit"></span>
         <span class="point-label">a 90 percent interval should hold 9 times in 10, and over 17 years it does</span>
       </div>
       <div class="point">
-        <span class="point-figure down" id="hero-worst">&mdash;</span>
+        <span class="point-figure" id="hero-worst">&mdash;</span>
         <span class="point-unit" id="hero-worst-unit"></span>
-        <span class="point-label">the same interval, in its worst three months: March 2020</span>
+        <span class="point-label">the same interval, in its worst three months: March 2020, the Covid pandemic</span>
       </div>
       <div class="point">
         <span class="point-figure up" id="hero-saving">&mdash;</span>
         <span class="point-unit" id="hero-saving-unit"></span>
+        <span class="point-extra" id="hero-saving-worth"></span>
         <span class="point-label">what forecasting the rota saves against last-week's-demand staffing</span>
       </div>
     </div>
+    <p class="hero-models" id="hero-models"></p>
     <p class="hero-note">
       <span id="hero-context">Nothing is modelled in your browser.</span> Every number was computed
       in advance by the backtest and is checkable in the repository, and every one carries a 95
@@ -62,10 +64,12 @@
   <section class="section" id="fan-panel">
     <h2>What a forecast with a range actually looks like</h2>
     <p class="section-lead">
-      One series at a time, forecast <span id="fan-step">14</span> days ahead. The band is where
-      the model said demand would be; the dark line is where it went. Pick any of the 37 series:
-      the whole city, one of five boroughs, or a single dispatch area, where the counts are small
-      and the noise is large.
+      One series at a time, forecast <span id="fan-step">14</span> days ahead by
+      <strong id="fan-model">the statistical model</strong>, which is the forecaster the rest of
+      this page staffs from and reconciles. The band is where the model said demand would be;
+      the dark line is where it went. Pick any of the 37 series: the whole city, one of five
+      boroughs, or a single dispatch area, where the counts are small and the noise is large.
+      Every model that was trained is compared further down.
     </p>
 
     <div class="controls">
@@ -81,7 +85,7 @@
         </label>
         <select id="fan-range">
           <option value="shift">September 2019 to September 2020</option>
-          <option value="recent">The last two years</option>
+          <option value="recent">The last year</option>
           <option value="all">Every origin, 2009 to 2026</option>
         </select>
       </div>
@@ -164,6 +168,46 @@
     </details>
   </section>
 
+  <section class="section" id="models-panel">
+    <h2>Every model that was trained, on one chart</h2>
+    <p class="section-lead" id="models-lede"></p>
+
+    <figure class="chart-figure">
+      <div id="models-chart" class="chart wide-chart"></div>
+      <p class="readout" id="models-readout"></p>
+      <div class="legend" id="models-legend"></div>
+      <figcaption id="models-caption"></figcaption>
+    </figure>
+
+    <div class="verdict">
+      <p>
+        <strong>The pretrained model is the one that did not lose, and the honest version of
+        that is complicated.</strong> TimesFM was trained on none of this data and forecasts it
+        zero-shot, with nothing fitted here at all. Its weights postdate most of these origins,
+        though, and its training corpus contains the 2020 period in other series, so a forecast
+        it makes of March 2020 is not the same kind of claim as every other bar above. It is
+        drawn here only on the clean window, the origins whose whole fortnight falls after the
+        latest documented pretraining data, and it is never pooled with the rows above it.
+      </p>
+      <p>
+        On that window it beats the best statistical model at every level and matches the global
+        boosted model, at no training cost and with no per-series fitting. On the shorter
+        cross-check after its weights were published, the one stretch nothing could have leaked
+        into, it is about one percent behind that boosted model instead. Forty origins cannot
+        settle which of those is the truth, and the repository says so rather than picking the
+        window that flatters it.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table id="models-table" class="tight">
+        <caption id="models-table-caption"></caption>
+      </table>
+    </div>
+
+    <div class="assumption" id="models-note"></div>
+  </section>
+
   <section class="section" id="reconciliation-panel">
     <h2>Do the parts add up to the whole?</h2>
     <p class="section-lead" id="reconciliation-lede"></p>
@@ -213,6 +257,14 @@
         and that line is interpolated between the bands that were exported: it is there to be
         read, not measured.
       </p>
+      <p>
+        <strong>Cost here is counted in unit-days, not in money.</strong> One unit staffed and not
+        needed costs 1, and one needed and missing costs 4 of the same thing, so a cost saved is a
+        number of unit-days saved and the crew-hours beside it are those unit-days at the hours
+        the inputs table gives them. Nothing on this page invents a rate of pay. Put your own on
+        the crew-hours and the figure is yours; change the two costs and every number in the table
+        moves, which is the point of their being a table.
+      </p>
     </div>
   </section>
 
@@ -222,7 +274,8 @@
       <li>
         <strong>Nothing here is live.</strong> Every number comes from one rolling-origin backtest
         over published data, and the repository's README carries the same numbers as tables,
-        including the models this page does not draw.
+        including the statistical models this page does not draw and the two further windows
+        the pretrained model was scored on.
       </li>
       <li>
         <strong>Coverage is measured on one forecast, not on all of them.</strong> The three
@@ -246,7 +299,7 @@
 <footer class="foot">
   <div class="foot-inner">
     <p>
-      Source, method, the full results and the models this page leaves out:
+      Source, method, the full results and every window they were measured on:
       <a href="https://github.com/Peter-A-P/capacity-planning-forecaster">github.com/Peter-A-P/capacity-planning-forecaster</a>
     </p>
     <ul>

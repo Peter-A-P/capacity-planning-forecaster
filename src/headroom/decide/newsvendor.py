@@ -24,9 +24,11 @@ worse is caught here.
 
 ## The inputs are a table
 
-Demand per unit and both costs are read from `inputs/decision.toml` and nowhere else. The
-values shipped there are illustrative and say so; the arithmetic is the result, not the
-numbers.
+Demand per unit, both costs and the hours a unit-day stands for are read from
+`inputs/decision.toml` and nowhere else. The values shipped there are illustrative and say
+so; the arithmetic is the result, not the numbers. Hours per unit-day enters no
+calculation here: cost is measured in unit-days, and it is the one number that lets the
+dashboard say what a cost in unit-days is in crew-hours without inventing a rate.
 """
 
 import math
@@ -49,12 +51,15 @@ class DecisionInputs:
         demand_per_unit: Incidents one staffed unit can serve in a day.
         cost_over: Cost of a unit-day staffed and not needed.
         cost_under: Cost of a unit-day needed and not staffed.
+        hours_per_unit_day: Hours of crew time one unit-day is. Nothing in the arithmetic
+            uses it; it is what lets a cost in abstract units be read as crew-hours.
         service_levels: Fixed service levels reported beside the critical ratio.
     """
 
     demand_per_unit: float
     cost_over: float
     cost_under: float
+    hours_per_unit_day: float
     service_levels: tuple[float, ...]
 
     def __post_init__(self) -> None:
@@ -68,6 +73,7 @@ class DecisionInputs:
             ("demand_per_unit", self.demand_per_unit),
             ("cost_over", self.cost_over),
             ("cost_under", self.cost_under),
+            ("hours_per_unit_day", self.hours_per_unit_day),
         ):
             if not value > 0.0:
                 raise ValueError(f"{name} must be positive, got {value}")
@@ -93,6 +99,7 @@ def load_inputs(path: Path = INPUTS) -> DecisionInputs:
         demand_per_unit=float(raw["demand_per_unit"]),
         cost_over=float(raw["cost_over"]),
         cost_under=float(raw["cost_under"]),
+        hours_per_unit_day=float(raw["hours_per_unit_day"]),
         service_levels=tuple(float(level) for level in raw["service_levels"]),
     )
 

@@ -1880,7 +1880,13 @@ def export(
     ] = "LightGBM",
     neural: Annotated[
         str, typer.Option(help="Comma-separated neural checkpoints, staffed from.")
-    ] = "N-HiTS-refit4",
+    ] = "N-HiTS-refit4,PatchTST-refit13",
+    zero_shot: Annotated[
+        str,
+        typer.Option(
+            "--zero-shot", help="Pretrained checkpoints, drawn on their own window only."
+        ),
+    ] = foundation.NAME,
     alpha: Annotated[
         str, typer.Option(help="Target miscoverages for the coverage panel.")
     ] = "0.20,0.10,0.05",
@@ -1910,6 +1916,9 @@ def export(
             reconciles. One model, not a list: the page shows one forecast at a time.
         boosting: The gradient-boosting checkpoint, staffed from.
         neural: Neural checkpoints, staffed from.
+        zero_shot: Pretrained checkpoints. They are drawn on their own window and never
+            pooled with the other models, for the reason `PLAN.md` section 2.7a gives, so
+            they are not staffed from either. Skipped where the checkpoint is missing.
         alpha: Comma-separated target miscoverages, so 0.10 is a 90 percent interval.
         level: Hierarchy level the coverage panel measures.
         horizon_step: Days ahead the fan chart draws, between 1 and the horizon.
@@ -1963,8 +1972,25 @@ def export(
             name, hierarchy, origins, quantiles[start:], actual[start:], lv.SCORING, 0.0
         )
 
+    # The baseline the models panel takes skill against. It is cheap and it is not read
+    # from a checkpoint, so it is run here rather than stored.
+    typer.echo("running seasonal naive")
+    naive_full = run(SeasonalNaive(), "Seasonal naive", panel.values, hierarchy, origins)
+    naive = _from_origin(naive_full, start)
+    nominal_at = list(naive.nominal).index(MAIN_NOMINAL)
+    model_rows = [
+        ex.model_row(
+            name="Seasonal naive",
+            kind="baseline",
+            fit_seconds=naive_full.fit_seconds,
+            levels=_model_levels(naive, None, nominal_at),
+        )
+    ]
+    del naive_full
+
     typer.echo(f"reading {statistical}")
     checkpoint = _complete_checkpoint(statistical, step, origins, hierarchy.n_nodes)
+    statistical_seconds = float(np.median(checkpoint.seconds)) * len(origins)
     band_at = [int(np.abs(lv.SCORING - q).argmin()) for q in ex.FAN_LEVELS]
     # (node, level, origin): the page draws one node at a time, so the node is the outer
     # axis and a series is one slice rather than a walk over the whole array.
@@ -1985,6 +2011,14 @@ def export(
     del bands
 
     base = scored(statistical, checkpoint.quantiles)
+    model_rows.append(
+        ex.model_row(
+            name=statistical,
+            kind="statistical",
+            fit_seconds=statistical_seconds,
+            levels=_model_levels(base, naive, nominal_at),
+        )
+    )
     demand = {
         "Seasonal naive": _naive_demand(panel, origins, start, service),
         statistical: _area_demand(checkpoint.quantiles, panel, start, service),
@@ -2013,7 +2047,6 @@ def export(
     variants.append((paths_name, scored(paths_name, mint.quantiles)))
     demand[paths_name] = _area_demand(mint.quantiles, panel, start, service)
 
-    nominal_at = list(base.nominal).index(MAIN_NOMINAL)
     rows: list[dict[str, Any]] = []
     for name, label in LEVEL_NAMES.items():
         before = base.by_origin(base.crps, name)
@@ -2048,9 +2081,66 @@ def export(
     for other_name in [*_names(boosting), *_names(neural)]:
         typer.echo(f"reading {other_name}")
         other = _complete_checkpoint(other_name, step, origins, hierarchy.n_nodes)
+        other_seconds = float(np.median(other.seconds)) * len(origins)
         quantiles = _distribution(other_name, other.quantiles, actual, step)
         demand[_method_label(other_name)] = _area_demand(quantiles, panel, start, service)
-        del other, quantiles
+        del other
+        other_scores = scored(other_name, quantiles)
+        model_rows.append(
+            ex.model_row(
+                name=_method_label(other_name),
+                kind=_model_kind(other_name),
+                fit_seconds=other_seconds,
+                levels=_model_levels(other_scores, naive, nominal_at),
+            )
+        )
+        del quantiles, other_scores
+
+    # A pretrained model is scored on its own window and never pooled with the rows above:
+    # its weights postdate most of these origins (`PLAN.md` section 2.7a). It is not
+    # staffed from here either, for the same reason.
+    own_windows: list[dict[str, Any]] = []
+    for shot_name in _names(zero_shot):
+        if not (output_dir() / _checkpoint_name(shot_name, step, origins)).exists():
+            typer.echo(f"no {shot_name} checkpoint; leaving it off the models panel")
+            continue
+        typer.echo(f"reading {shot_name}")
+        other = _complete_checkpoint(shot_name, step, origins, hierarchy.n_nodes)
+        shot_seconds = float(np.median(other.seconds)) * len(origins)
+        quantiles = _distribution(shot_name, other.quantiles, actual, step)
+        del other
+        window_label, first_day = foundation.WINDOWS[0]
+        numbered = [origin.number for origin in listed if origin.day >= first_day]
+        if not numbered or max(numbered[0], start) >= len(origins):
+            typer.echo(f"{shot_name}: no clean window in this schedule")
+            del quantiles
+            continue
+        first_origin = max(numbered[0], start)
+        typer.echo(f"scoring {shot_name} on {len(origins) - first_origin} clean origins")
+        shot_scores = score_forecasts(
+            shot_name,
+            hierarchy,
+            origins,
+            quantiles[first_origin:],
+            actual[first_origin:],
+            lv.SCORING,
+            0.0,
+        )
+        own_windows.append(
+            ex.own_window_row(
+                name=dict(PROMISED_ROWS).get(_base_model(shot_name), shot_name),
+                kind=_model_kind(shot_name),
+                fit_seconds=shot_seconds,
+                window=window_label,
+                first=listed[first_origin].day,
+                origins=len(origins) - first_origin,
+                levels=_model_levels(
+                    shot_scores, _from_origin(naive, first_origin - start), nominal_at
+                ),
+            )
+        )
+        del quantiles, shot_scores
+    del naive
 
     typer.echo("staffing")
     staffing = _staffing(demand, actual[start:], panel, service)
@@ -2081,11 +2171,19 @@ def export(
             nodes=list(hierarchy.nodes), levels=list(hierarchy.levels)
         ),
         coverage=coverage,
+        models=ex.models_section(
+            nominal=MAIN_NOMINAL,
+            baseline="Seasonal naive",
+            origins=len(days),
+            rows=model_rows,
+            own_windows=own_windows,
+        ),
         reconciliation=reconciliation,
         staffing=ex.staffing_section(
             demand_per_unit=inputs.demand_per_unit,
             cost_over=inputs.cost_over,
             cost_under=inputs.cost_under,
+            hours_per_unit_day=inputs.hours_per_unit_day,
             implied=implied,
             oracle_units=staffing.oracle_units,
             reference=statistical,
@@ -2197,6 +2295,67 @@ def _method_label(name: str) -> str:
     if refit.isdigit():
         return f"{model}, refitted every {refit} weeks"
     return name
+
+
+def _model_kind(name: str) -> str:
+    """What sort of model a checkpoint holds, for the dashboard to group rows by.
+
+    The page must not group by matching on names, so the kind travels in the payload. A
+    checkpoint tagged with a refit schedule is one of the networks trained here; the
+    pretrained model is named by :mod:`headroom.models.foundation`; the global boosted
+    model forecasts a point and is given a conformal distribution.
+
+    Args:
+        name: A checkpoint name, such as ``PatchTST-refit13``.
+
+    Returns:
+        ``zero-shot``, ``neural``, ``boosting`` or ``statistical``.
+    """
+    base = _base_model(name)
+    if base == foundation.NAME:
+        return "zero-shot"
+    if _refit_every(name) is not None:
+        return "neural"
+    if base == "LightGBM":
+        return "boosting"
+    return "statistical"
+
+
+def _model_levels(
+    scores: Scores, naive: Scores | None, nominal_at: int
+) -> list[dict[str, Any]]:
+    """One model's CRPS, skill, coverage and width at each hierarchy level.
+
+    Args:
+        scores: The model's scores, on the origins it is being reported on.
+        naive: Seasonal naive on exactly those origins, or ``None`` for the baseline
+            itself, whose skill against itself is zero by construction.
+        nominal_at: Index of the reported nominal coverage in ``scores.nominal``.
+
+    Returns:
+        One entry per level, as :func:`headroom.report.export.model_level` shapes it.
+    """
+    from headroom.report import export as ex
+
+    out = []
+    for level, label in LEVEL_NAMES.items():
+        crps = scores.by_origin(scores.crps, level)
+        hits = scores.by_origin(scores.hits[..., nominal_at].astype(np.float64), level)
+        widths = scores.by_origin(scores.widths[..., nominal_at], level)
+        out.append(
+            ex.model_level(
+                level=label,
+                crps=confidence_interval(crps),
+                skill=(
+                    None
+                    if naive is None
+                    else skill_interval(crps, naive.by_origin(naive.crps, level))
+                ),
+                coverage=confidence_interval(hits),
+                width=confidence_interval(widths),
+            )
+        )
+    return out
 
 
 def _base_model(name: str) -> str:

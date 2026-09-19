@@ -210,9 +210,10 @@ library that assumes it has would leak the future into the interval.
 ## The dashboard: [capacity.peterparker.ca](https://capacity.peterparker.ca)
 
 The same numbers, but you can move them. `dashboard/` is a static page over two JSON files
-written by `headroom export` from the same checkpoints the tables above come from. Four
+written by `headroom export` from the same checkpoints the tables above come from. Five
 panels: the forecast with any of the 37 series picked out of the hierarchy, coverage through
-the shift with the trailing window under your control, the reconciliation table, and a
+the shift with the trailing window under your control, every model's CRPS skill on one chart
+with TimesFM drawn under a divider on its clean window, the reconciliation table, and a
 service-level slider that re-prices the rota at each level it was measured at. No framework,
 no web fonts, and no request that leaves the page.
 

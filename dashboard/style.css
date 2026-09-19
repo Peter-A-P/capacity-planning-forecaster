@@ -42,6 +42,11 @@
   --good: #1e7a4c;
   --alt: #6d3f9e;
   --shift: rgba(192, 57, 43, 0.09);
+  /* The three levels of the hierarchy are an ordered set, so they are one hue in three
+     steps rather than three colours: darkest is the city, lightest the dispatch areas. */
+  --lv0: #0b4653;
+  --lv1: #2f8294;
+  --lv2: #7bb3c0;
   --serif: "Newsreader", Georgia, "Times New Roman", serif;
   --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
@@ -67,6 +72,9 @@
     --good: #58c286;
     --alt: #b191e0;
     --shift: rgba(240, 115, 106, 0.13);
+    --lv0: #cbeaf2;
+    --lv1: #7cc7d6;
+    --lv2: #3d8ea1;
     --shadow: 0 6px 24px -14px rgba(0, 0, 0, 0.6);
   }
 }
@@ -219,6 +227,21 @@ strong { font-weight: 600; }
   line-height: 1.4;
 }
 
+.point-extra {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-models {
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.6rem;
+}
+
 .hero-note { font-size: 0.88rem; color: var(--ink-faint); margin: 0; }
 
 /* ---------------------------------------------------------------- sections */
@@ -311,6 +334,11 @@ output { font-variant-numeric: tabular-nums; color: var(--accent-ink); font-weig
 .chart { width: 100%; }
 .chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
 
+/* A chart whose labels are words rather than ticks cannot be shrunk to a phone's width and
+   still be read, so it keeps its size and scrolls sideways instead. */
+.wide-chart { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.wide-chart svg { min-width: 40rem; }
+
 figcaption { font-size: 0.83rem; color: var(--ink-faint); margin-top: 0.5rem; }
 
 .gridline { stroke: var(--line); stroke-width: 1; }
@@ -336,6 +364,10 @@ figcaption { font-size: 0.83rem; color: var(--ink-faint); margin-top: 0.5rem; }
 .nominal { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 5 4; fill: none; }
 .actual-line { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; }
 .median { fill: none; stroke: var(--accent); stroke-width: 1.75; stroke-linejoin: round; }
+/* Over 911 origins a 1.5px line is a solid block; these are the same lines, drawn for a
+   view that has ten times as many points in the same width. */
+.actual-line.thin, .median.thin { stroke-width: 0.8; }
+
 .service { fill: none; stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 6 4; }
 .shift-span { fill: var(--shift); }
 .shift-label { fill: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -346,6 +378,26 @@ figcaption { font-size: 0.83rem; color: var(--ink-faint); margin-top: 0.5rem; }
 .dot.m1 { fill: var(--warn); }
 .dot.m2 { fill: var(--alt); }
 .catcher { cursor: crosshair; }
+
+/* The models panel. A bar is a length, so it gets a fill and no outline; the interval is
+   a hairline through it, in ink rather than in the series colour, because it is not a
+   fourth series. */
+.bar { stroke: none; }
+.bar.lv0 { fill: var(--lv0); }
+.bar.lv1 { fill: var(--lv1); }
+.bar.lv2 { fill: var(--lv2); }
+.bar.own { fill-opacity: 0.7; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
+.sw-lv0 { background: var(--lv0); }
+.sw-lv1 { background: var(--lv1); }
+.sw-lv2 { background: var(--lv2); }
+.whisker { stroke: var(--ink-soft); stroke-width: 1; }
+.zero { stroke: var(--ink-faint); stroke-width: 1.25; }
+.zero-label { fill: var(--ink-faint); font-size: 10.5px; }
+.bar-value { fill: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
+.row-label { fill: var(--ink); font-size: 12px; font-weight: 600; }
+.row-note { fill: var(--ink-faint); font-size: 10.5px; }
+.divider { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 4 3; }
+.divider-label { fill: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.25rem 0 0.5rem; }
 
@@ -364,6 +416,8 @@ figcaption { font-size: 0.83rem; color: var(--ink-faint); margin-top: 0.5rem; }
 .swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; flex: none; }
 .swatch.dashed { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
 .swatch.block { height: 11px; border-radius: 3px; opacity: 0.3; }
+/* A bar's swatch is the bar's colour at full strength: it names a series, not a band. */
+.swatch.solid { height: 11px; border-radius: 3px; }
 
 /* The hover readout. One row per series, values right-aligned so they line up as a column. */
 .readout {
@@ -401,8 +455,16 @@ th {
 }
 
 tbody th { background: transparent; font-size: 0.9rem; }
+/* A row label that carries its window as well as its name is the one cell allowed to wrap,
+   so that one long label does not push the whole table out of its column. */
+tbody th.wrap { white-space: normal; max-width: 14rem; }
 
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Seven columns of estimate and interval is a table that only just fits the column this
+   page is set in, so it is given narrower gutters rather than a scrollbar it does not
+   need. It still scrolls on a narrow screen, like every other table here. */
+.tight th, .tight td { padding-left: 0.55rem; padding-right: 0.55rem; }
 
 caption { caption-side: bottom; text-align: left; color: var(--ink-faint); font-size: 0.83rem; padding-top: 0.6rem; }
 

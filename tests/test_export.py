@@ -27,6 +27,47 @@ def estimate(point: float) -> tuple[float, float, float]:
     return (point, point - 1.0, point + 1.0)
 
 
+def levels(skill: float | None) -> list[dict[str, Any]]:
+    """One level's worth of scores, with or without a skill against the baseline."""
+    return [
+        ex.model_level(
+            level="City",
+            crps=estimate(120.0),
+            skill=None if skill is None else estimate(skill),
+            coverage=(0.9, 0.88, 0.92),
+            width=estimate(840.0),
+        )
+    ]
+
+
+def models_section() -> dict[str, Any]:
+    """The models panel, one baseline row, one model row and one own-window row."""
+    return ex.models_section(
+        nominal=0.9,
+        baseline="Seasonal naive",
+        origins=3,
+        rows=[
+            ex.model_row(
+                name="Seasonal naive", kind="baseline", fit_seconds=60.0, levels=levels(None)
+            ),
+            ex.model_row(
+                name="ETS", kind="statistical", fit_seconds=5760.0, levels=levels(0.18)
+            ),
+        ],
+        own_windows=[
+            ex.own_window_row(
+                name="TimesFM, zero-shot",
+                kind="zero-shot",
+                fit_seconds=24840.0,
+                window="Clean: whole horizon after the pretraining data",
+                first=date(2023, 12, 4),
+                origins=133,
+                levels=levels(0.28),
+            )
+        ],
+    )
+
+
 def dashboard_payload() -> dict[str, Any]:
     """A small payload with every section filled, shaped as the CLI shapes it."""
     days = [date(2020, 1, 5), date(2020, 1, 12), date(2020, 1, 19)]
@@ -50,6 +91,7 @@ def dashboard_payload() -> dict[str, Any]:
                 )
             ],
         ),
+        models=models_section(),
         reconciliation=ex.reconciliation_section(
             model="ETS",
             base_coherence_error=514.8,
@@ -68,6 +110,7 @@ def dashboard_payload() -> dict[str, Any]:
             demand_per_unit=40.0,
             cost_over=1.0,
             cost_under=3.0,
+            hours_per_unit_day=24.0,
             implied=0.75,
             oracle_units=90.0,
             reference="ETS",
@@ -169,6 +212,7 @@ def test_a_staffing_method_must_be_priced_at_every_service_level():
             demand_per_unit=40.0,
             cost_over=1.0,
             cost_under=3.0,
+            hours_per_unit_day=24.0,
             implied=0.75,
             oracle_units=90.0,
             reference="ETS",
@@ -190,6 +234,7 @@ def test_the_reference_method_has_to_be_in_the_staffing_table():
             demand_per_unit=40.0,
             cost_over=1.0,
             cost_under=3.0,
+            hours_per_unit_day=24.0,
             implied=0.75,
             oracle_units=90.0,
             reference="ETS",
@@ -203,6 +248,38 @@ def test_the_reference_method_has_to_be_in_the_staffing_table():
                 )
             ],
         )
+
+
+def test_the_models_panel_must_hold_the_baseline_it_takes_skill_against():
+    with pytest.raises(ValueError, match="baseline"):
+        ex.models_section(
+            nominal=0.9,
+            baseline="Seasonal naive",
+            origins=3,
+            rows=[
+                ex.model_row(
+                    name="ETS", kind="statistical", fit_seconds=1.0, levels=levels(0.18)
+                )
+            ],
+        )
+
+
+def test_the_baseline_carries_no_skill_against_itself():
+    # Zero by construction is not a measurement, and a chart that drew it as one would put
+    # a bar with an interval on the line every other bar is measured from.
+    row = ex.model_row(
+        name="Seasonal naive", kind="baseline", fit_seconds=60.0, levels=levels(None)
+    )
+    assert row["levels"][0]["skill"] is None
+
+
+def test_a_model_scored_on_its_own_window_says_which_window():
+    # PLAN.md section 2.7a: a pretrained model's origins are not the other models'
+    # origins, so the page must be told the window rather than assume it.
+    row = models_section()["own_windows"][0]
+    assert row["window"].startswith("Clean")
+    assert row["origins"] == 133
+    assert row["first"] == "2023-12-04"
 
 
 def test_the_fan_bands_have_to_match_the_nodes_and_days_they_claim():

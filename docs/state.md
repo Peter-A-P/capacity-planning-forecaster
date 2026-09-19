@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, brought forward from a mid-2027 slot (`PLAN.md` header). Two-week
 build.
 
-**309 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**312 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -35,7 +35,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_cli.py` | 8 | `HEADROOM_OUT`, checkpoint names shared by `stats` and `score`, and the per-quantile pinball table (a model scored against itself has no skill at any quantile) |
 | `test_charts.py` | 10 | The trailing window, the refusals that stop a series being drawn against the wrong dates, and that a real PNG appears |
 | `test_report.py` | 42 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
-| `test_export.py` | 20 | The dashboard payloads against their schema, `nan` never reaching JSON, an interval that does not contain its point refused, and the built page: every file it asks for is published, and it carries nothing its own content security policy would refuse |
+| `test_export.py` | 23 | The dashboard payloads against their schema, `nan` never reaching JSON, an interval that does not contain its point refused, and the built page: every file it asks for is published, and it carries nothing its own content security policy would refuse |
 
 ### Built and measured
 
@@ -129,13 +129,23 @@ genuinely not built is conformal on the reconciled forecasts.
   precomputed JSON, no framework and no web fonts). Both payloads are validated against a
   JSON Schema before they are written, and `tests/test_export.py` checks the built page as
   well as the payloads. `headroom serve` serves it with the headers and content types
-  `dashboard/staticwebapp.config.json` declares. Four panels, as `PLAN.md` section 4 names
-  them: the fan chart with a node picker, coverage through the shift with a window control,
-  the reconciliation table, and the service-level slider driving the staffing table. Each
-  chart has a hover readout. It takes peterparker.ca's palette, type and 3px rule, on the
+  `dashboard/staticwebapp.config.json` declares. Five panels: the fan chart with a node
+  picker, coverage through the shift with a window control, every model's CRPS skill on one
+  chart, the reconciliation table, and the service-level slider driving the staffing table.
+  Each chart has a hover readout. It takes peterparker.ca's palette, type and 3px rule, on the
   same
   pattern, with the two fonts copied into `dashboard/fonts/` because the policy allows no
   off-origin request.
+- **Dashboard, second pass: 2026-09-18, payload schema version 2.** The page compared no
+  models while the README compared six, so `headroom export` now scores every checkpoint it
+  reads and writes a `models` section, and the page draws it as one chart: CRPS skill
+  against seasonal naive per model and per level, whiskered with its bootstrap interval,
+  with the compute each model cost beside its name. TimesFM is on it under a divider, on
+  its clean window alone, for the reason `PLAN.md` section 2.7a gives; it is for the same
+  reason not in the staffing table, which PatchTST did join. `inputs/decision.toml` gained
+  `hours_per_unit_day`, which enters no arithmetic and exists so a cost in unit-days can
+  also be read as crew-hours. The export takes about seven minutes now that it scores six
+  models rather than one.
   **What is left is publishing**, which is a separate decision because it provisions
   hosting: `docs/deploy.md` is the runbook, the Azure app and the Cloudflare record were
   created on 2026-09-18, and the deploy itself needs the deployment token, which lives

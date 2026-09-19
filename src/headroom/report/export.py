@@ -39,7 +39,8 @@ import numpy.typing as npt
 
 #: Bumped when a payload changes shape in a way the page has to know about. The page checks
 #: it and says so rather than drawing half a chart from a file it does not understand.
-SCHEMA_VERSION: Final[int] = 1
+#: Version 2 added the models section and the staffing inputs' hours per unit-day.
+SCHEMA_VERSION: Final[int] = 2
 
 #: The quantiles the fan chart draws, ascending. Five, not the nine the PNG uses: every level
 #: is one more array per node per origin in a file the browser downloads, and the outer band
@@ -53,6 +54,10 @@ DEMAND_PLACES: Final[int] = 1
 
 #: Decimal places for a share, a coverage or a skill.
 SHARE_PLACES: Final[int] = 4
+
+#: Decimal places for a CRPS. Three, because a dispatch area's CRPS is around 8 and the
+#: differences between models there are in the second decimal place.
+SCORE_PLACES: Final[int] = 3
 
 #: The file names, which are also the schema names.
 DASHBOARD: Final[str] = "dashboard.json"
@@ -127,6 +132,7 @@ def dashboard_payload(
     origins: dict[str, Any],
     hierarchy: dict[str, Any],
     coverage: dict[str, Any],
+    models: dict[str, Any],
     reconciliation: dict[str, Any],
     staffing: dict[str, Any],
 ) -> dict[str, Any]:
@@ -137,6 +143,7 @@ def dashboard_payload(
         origins: As :func:`origins_section` returns it.
         hierarchy: As :func:`hierarchy_section` returns it.
         coverage: As :func:`coverage_section` returns it.
+        models: As :func:`models_section` returns it.
         reconciliation: As :func:`reconciliation_section` returns it.
         staffing: As :func:`staffing_section` returns it.
 
@@ -149,6 +156,7 @@ def dashboard_payload(
         "origins": origins,
         "hierarchy": hierarchy,
         "coverage": coverage,
+        "models": models,
         "reconciliation": reconciliation,
         "staffing": staffing,
     }
@@ -334,6 +342,7 @@ def staffing_section(
     demand_per_unit: float,
     cost_over: float,
     cost_under: float,
+    hours_per_unit_day: float,
     implied: float,
     oracle_units: float,
     reference: str,
@@ -346,6 +355,8 @@ def staffing_section(
         demand_per_unit: Incidents one staffed unit serves in a day.
         cost_over: Cost of a unit-day staffed and not needed.
         cost_under: Cost of a unit-day needed and not staffed.
+        hours_per_unit_day: Hours of crew time one unit-day is, which is what lets a cost
+            in abstract units be read as crew-hours.
         implied: The service level those costs imply.
         oracle_units: Units a day an oracle knowing demand would staff.
         reference: The method the cost differences are taken against.
@@ -373,6 +384,7 @@ def staffing_section(
             "demand_per_unit": float(demand_per_unit),
             "cost_over": float(cost_over),
             "cost_under": float(cost_under),
+            "hours_per_unit_day": float(hours_per_unit_day),
             "implied_service_level": round(float(implied), 6),
         },
         "oracle_units": number(oracle_units, DEMAND_PLACES),
@@ -407,6 +419,137 @@ def staffing_method(
         "cost": [estimate(value, 2) for value in cost],
         "cost_change": [None if value is None else estimate(value, 2) for value in cost_change],
     }
+
+
+def model_level(
+    *,
+    level: str,
+    crps: tuple[float, float, float],
+    skill: tuple[float, float, float] | None,
+    coverage: tuple[float, float, float],
+    width: tuple[float, float, float],
+) -> dict[str, Any]:
+    """Shape one model's numbers at one hierarchy level.
+
+    Args:
+        level: The hierarchy level.
+        crps: Mean CRPS with its interval.
+        skill: CRPS skill against the baseline, or ``None`` for the baseline itself,
+            whose skill is zero by construction and would read as a measurement.
+        coverage: Coverage at the nominal level, with its interval.
+        width: Mean interval width at the nominal level, with its interval.
+
+    Returns:
+        The entry.
+    """
+    return {
+        "level": level,
+        "crps": estimate(crps, SCORE_PLACES),
+        "skill": None if skill is None else estimate(skill, SHARE_PLACES),
+        "coverage": estimate(coverage, SHARE_PLACES),
+        "width": estimate(width, DEMAND_PLACES),
+    }
+
+
+def model_row(
+    *, name: str, kind: str, fit_seconds: float, levels: Sequence[dict[str, Any]]
+) -> dict[str, Any]:
+    """Shape one model's row of the comparison.
+
+    Args:
+        name: The model's label, as the README's tables write it.
+        kind: What sort of model it is: ``baseline``, ``statistical``, ``boosting``,
+            ``neural`` or ``zero-shot``. The page groups and marks rows by it rather
+            than matching on names.
+        fit_seconds: Seconds inside the model over the full schedule.
+        levels: One entry per hierarchy level, as :func:`model_level` returns it.
+
+    Returns:
+        The row.
+
+    Raises:
+        ValueError: The row has no levels.
+    """
+    if not levels:
+        raise ValueError(f"{name} has no levels to report")
+    return {
+        "name": name,
+        "kind": kind,
+        "fit_seconds": round(float(fit_seconds), 1),
+        "levels": list(levels),
+    }
+
+
+def models_section(
+    *,
+    nominal: float,
+    baseline: str,
+    origins: int,
+    rows: Sequence[dict[str, Any]],
+    own_windows: Sequence[dict[str, Any]] = (),
+) -> dict[str, Any]:
+    """Shape the panel that puts every model on one chart.
+
+    The rows are scored on one set of origins and are comparable with each other. A model
+    whose origins are not those origins does not belong among them: `PLAN.md` section 2.7a
+    forbids pooling a pretrained model's numbers with the rest, so it is carried in
+    ``own_windows`` instead, with the window it was scored on named in the payload rather
+    than assumed by the page.
+
+    Args:
+        nominal: The nominal coverage the coverage columns report.
+        baseline: The method skill is taken against.
+        origins: Origins every row was scored on.
+        rows: One row per model, as :func:`model_row` returns it.
+        own_windows: Rows scored on their own window, each with ``window``, ``origins``
+            and ``first`` beside the fields of a row.
+
+    Returns:
+        The section.
+
+    Raises:
+        ValueError: There are no rows, or the baseline is not among them.
+    """
+    if not rows:
+        raise ValueError("no models to export")
+    if baseline not in {row["name"] for row in rows}:
+        raise ValueError(f"baseline {baseline} is not among the models")
+    return {
+        "nominal": round(float(nominal), SHARE_PLACES),
+        "baseline": baseline,
+        "origins": int(origins),
+        "rows": list(rows),
+        "own_windows": list(own_windows),
+    }
+
+
+def own_window_row(
+    *,
+    name: str,
+    kind: str,
+    fit_seconds: float,
+    window: str,
+    first: date,
+    origins: int,
+    levels: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Shape a model scored on its own window, never pooled with the rows above.
+
+    Args:
+        name: The model's label.
+        kind: What sort of model it is.
+        fit_seconds: Seconds inside the model over the full schedule.
+        window: What the window is, written out, because the page must not name it itself.
+        first: The first origin in the window.
+        origins: How many origins it holds.
+        levels: One entry per hierarchy level, as :func:`model_level` returns it.
+
+    Returns:
+        The row.
+    """
+    row = model_row(name=name, kind=kind, fit_seconds=fit_seconds, levels=levels)
+    row.update({"window": window, "first": first.isoformat(), "origins": int(origins)})
+    return row
 
 
 def forecast_payload(
@@ -484,6 +627,45 @@ def _series_schema() -> dict[str, Any]:
     return {"type": "array", "items": {"type": ["number", "null"]}}
 
 
+def _model_row_schema(extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The shape of one model's row of the comparison.
+
+    Args:
+        extra: Further required properties, for a row scored on its own window.
+
+    Returns:
+        The schema fragment.
+    """
+    properties: dict[str, Any] = {
+        "name": {"type": "string"},
+        "kind": {"type": "string"},
+        "fit_seconds": {"type": "number", "minimum": 0},
+        "levels": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": ["level", "crps", "skill", "coverage", "width"],
+                "additionalProperties": False,
+                "properties": {
+                    "level": {"type": "string"},
+                    "crps": _estimate_schema(),
+                    "skill": {"oneOf": [_estimate_schema(), {"type": "null"}]},
+                    "coverage": _estimate_schema(),
+                    "width": _estimate_schema(),
+                },
+            },
+        },
+    }
+    properties.update(extra or {})
+    return {
+        "type": "object",
+        "required": sorted(properties),
+        "additionalProperties": False,
+        "properties": properties,
+    }
+
+
 #: What each payload has to be, as JSON Schema. Written out rather than derived from the
 #: builders above, so that a builder losing a field is a test failure and not a schema that
 #: quietly agrees with it.
@@ -498,6 +680,7 @@ SCHEMAS: Final[dict[str, dict[str, Any]]] = {
             "origins",
             "hierarchy",
             "coverage",
+            "models",
             "reconciliation",
             "staffing",
         ],
@@ -555,6 +738,30 @@ SCHEMAS: Final[dict[str, dict[str, Any]]] = {
                                 "width": _series_schema(),
                             },
                         },
+                    },
+                },
+            },
+            "models": {
+                "type": "object",
+                "required": ["nominal", "baseline", "origins", "rows", "own_windows"],
+                "properties": {
+                    "nominal": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+                    "baseline": {"type": "string"},
+                    "origins": {"type": "integer", "minimum": 1},
+                    "rows": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": _model_row_schema(),
+                    },
+                    "own_windows": {
+                        "type": "array",
+                        "items": _model_row_schema(
+                            extra={
+                                "window": {"type": "string"},
+                                "first": {"type": "string"},
+                                "origins": {"type": "integer", "minimum": 1},
+                            }
+                        ),
                     },
                 },
             },
@@ -617,12 +824,14 @@ SCHEMAS: Final[dict[str, dict[str, Any]]] = {
                             "demand_per_unit",
                             "cost_over",
                             "cost_under",
+                            "hours_per_unit_day",
                             "implied_service_level",
                         ],
                         "properties": {
                             "demand_per_unit": {"type": "number", "exclusiveMinimum": 0},
                             "cost_over": {"type": "number", "exclusiveMinimum": 0},
                             "cost_under": {"type": "number", "exclusiveMinimum": 0},
+                            "hours_per_unit_day": {"type": "number", "exclusiveMinimum": 0},
                             "implied_service_level": {
                                 "type": "number",
                                 "exclusiveMinimum": 0,

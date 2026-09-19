@@ -697,6 +697,14 @@ The inputs are a table, `inputs/decision.toml`, and **every value in it is illus
 the costs imply the 80th percentile. They come from no emergency service or published
 standard. The comparison between methods is the result; the absolute costs are not.
 
+A fourth value, `hours_per_unit_day`, was added on 2026-09-18 and is 24, a unit staffed
+around the clock. **It enters no calculation here.** Cost is counted in unit-days by
+construction, since a spare unit-day costs 1 of them and a missing one costs 4, so a cost
+saved is already a number of unit-days; the hours are what let the dashboard state that
+saving as crew-hours without inventing a rate of pay, which it does not do anywhere. A
+reader with a rate can put it on the crew-hours; the arithmetic above is unchanged either
+way.
+
 ### Measured result
 
 Origins 53 to 963 for every method, so the reconciled and LightGBM rows are paired with

@@ -385,6 +385,28 @@ rather than in a terminal. Three deviations from the line above, all deliberate:
   changed without re-exporting. It is the only arithmetic in the JavaScript, and it mirrors
   `headroom.report.charts.rolling_mean`, which is now public for that reason.
 
+**As built, the models panel (2026-09-18).** The line above lists four panels, and the
+dashboard drew four: a page that compared no models while the README compared six was the
+first thing a reader asked about. Payload schema version 2 adds a `models` section and the
+page draws a fifth panel, CRPS skill against seasonal naive per model and per level, with
+its bootstrap interval as a whisker and the compute each model cost beside its name. Three
+decisions in it are worth recording:
+
+- **The pretrained model is on the same chart, under a divider, and never pooled with the
+  rest.** Section 2.7a forbids reporting TimesFM on the other models' origins as though it
+  were one of them. Keeping it off the chart entirely would have hidden the project's most
+  interesting result, so it is drawn on its clean window alone, under a rule, with the
+  window and its origin count in the payload rather than assumed by the page. It is for the
+  same reason absent from the staffing table, whose rows are all priced on one set of
+  origins.
+- **Skill is drawn as a percentage and tabled as a share.** The chart is read by someone
+  deciding whether any of this is worth the compute; the table beside it is the README's
+  number, unchanged.
+- **Cost saved is also given in crew-hours**, because a cost in abstract units answers
+  nobody's question. Cost here is counted in unit-days by construction, so the only new
+  input is `hours_per_unit_day` in `inputs/decision.toml`, which prices nothing and is
+  replaceable like the rest. No rate of pay is invented anywhere on the page.
+
 `headroom serve` serves the site with the headers **and the content types** in
 `dashboard/staticwebapp.config.json`. A plain file server sends neither, which on
 the Intervention Targeting Engine hid a broken chart on the live site for two weeks while every local check looked correct.

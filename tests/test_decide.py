@@ -22,7 +22,11 @@ from headroom.decide.newsvendor import (
 from headroom.score import levels as lv
 
 INPUTS_4_TO_1 = DecisionInputs(
-    demand_per_unit=10.0, cost_over=1.0, cost_under=4.0, service_levels=(0.8, 0.9, 0.95)
+    demand_per_unit=10.0,
+    cost_over=1.0,
+    cost_under=4.0,
+    hours_per_unit_day=24.0,
+    service_levels=(0.8, 0.9, 0.95),
 )
 
 
@@ -86,7 +90,10 @@ def test_the_shipped_inputs_table_loads_and_bad_inputs_are_refused():
     inputs = load_inputs(INPUTS)
     assert inputs.demand_per_unit > 0
     assert inputs.cost_under > 0
+    assert inputs.hours_per_unit_day > 0
     with pytest.raises(ValueError, match="must be positive"):
         replace(inputs, cost_over=0.0)
+    with pytest.raises(ValueError, match="must be positive"):
+        replace(inputs, hours_per_unit_day=0.0)
     with pytest.raises(ValueError, match="service levels"):
         replace(inputs, service_levels=(1.0,))

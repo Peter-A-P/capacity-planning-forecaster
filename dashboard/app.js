@@ -75,18 +75,49 @@
     return isNumber(value) ? Math.round(value).toLocaleString() : "n/a";
   }
 
+  /* Compute time, as headroom.report.tables.duration formats it, so the page and the
+     README's fit-time column read the same. */
+  function duration(seconds) {
+    if (!isNumber(seconds)) { return "n/a"; }
+    if (seconds < 3600) { return Math.max(1, Math.round(seconds / 60)) + " min"; }
+    return (seconds / 3600).toFixed(1) + " h";
+  }
+
+  function signedPercent(value, places) {
+    if (!isNumber(value)) { return "n/a"; }
+    return (value < 0 ? "−" : "+") + Math.abs(value * 100).toFixed(places === undefined ? 1 : places) + "%";
+  }
+
+  function roundTo(value, unit) {
+    return isNumber(value) ? Math.round(value / unit) * unit : null;
+  }
+
+  /* A model's label carries its own comma ("N-HiTS, refitted every 4 weeks"), and two of
+     those inside a list make the sentence unreadable, so prose uses the name alone. */
+  function shortName(name) { return name.split(", ")[0]; }
+
+  /* Names, read out the way a sentence reads them. */
+  function listing(items) {
+    if (!items.length) { return ""; }
+    if (items.length === 1) { return items[0]; }
+    return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+  }
+
   function dateLabel(at) {
     var when = new Date(at * DAY);
     return when.getUTCDate() + " " + MONTHS[when.getUTCMonth()] + " " + when.getUTCFullYear();
   }
 
-  /* An estimate is never shown without its interval: the interval is the measurement. */
-  function estimateCell(estimate, places, showSign) {
+  /* An estimate is never shown without its interval: the interval is the measurement.
+     A signed number is coloured by which way is good, and that differs by column: a change
+     in CRPS is a loss, so less is better, and a skill is the loss removed, so more is. */
+  function estimateCell(estimate, places, showSign, upIsBetter) {
     var cell = el("td", { "class": "num" });
     var format = showSign ? signed : decimals;
     var point = el("span", null, format(estimate.point, places));
     if (showSign && isNumber(estimate.point)) {
-      point.className = estimate.point < 0 ? "better" : "worse";
+      var good = upIsBetter ? estimate.point > 0 : estimate.point < 0;
+      point.className = good ? "better" : "worse";
     }
     cell.appendChild(point);
     cell.appendChild(document.createTextNode(" "));
@@ -213,7 +244,7 @@
     return frame;
   }
 
-  function shade(frame, from, to, label) {
+  function shade(frame, from, to, label, low) {
     var lo = Math.max(from, frame.domain[0]);
     var hi = Math.min(to, frame.domain[1]);
     if (hi <= lo) { return; }
@@ -222,7 +253,11 @@
       x: frame.x(lo), y: 0, width: frame.x(hi) - frame.x(lo), height: frame.deep
     }));
     if (label) {
-      var text = svg("text", { "class": "shift-label", x: frame.x(lo) + 4, y: 11 });
+      /* At the top by default, and at the foot where the series live up there: on a
+         coverage chart drawn 0 to 100 the lines sit against the ceiling. */
+      var text = svg("text", {
+        "class": "shift-label", x: frame.x(lo) + 4, y: low ? frame.deep - 5 : 11
+      });
       text.textContent = label;
       frame.plot.appendChild(text);
     }
@@ -354,6 +389,21 @@
     return [lo - room, hi + room];
   }
 
+  /* A cost here is counted in unit-days: a unit staffed and not needed costs 1, and one
+     needed and missing costs 4 of the same thing. So a cost saved is a number of unit-days
+     saved, and the only input that turns it into a quantity a planner recognises is the
+     hours in a unit-day, which lives in inputs/decision.toml and not in this file. Nothing
+     here invents a rate of pay: a reader with one can put it on the crew-hours. */
+  var YEAR = 365;
+
+  function worth(saved, hoursPerUnitDay) {
+    if (!isNumber(saved) || !isNumber(hoursPerUnitDay) || saved <= 0) { return ""; }
+    var days = roundTo(saved * YEAR, 100);
+    var hours = roundTo(saved * YEAR * hoursPerUnitDay, 1000);
+    return "about " + count(days) + " crew-days a year, or " + count(hours) +
+      " crew-hours at " + decimals(hoursPerUnitDay, 0) + " hours to a unit-day";
+  }
+
   /* The forecast panel -------------------------------------------------------- */
 
   function serviceQuantile(bands, levels, wanted, at) {
@@ -377,7 +427,7 @@
       to = day("2020-09-01");
     } else {
       to = day(days[days.length - 1]);
-      from = to - 730;
+      from = to - 365;
     }
     var first = 0;
     var last = days.length - 1;
@@ -410,24 +460,35 @@
       return serviceQuantile(node, levels, service, k);
     });
 
-    var frame = chart(320, [xs[0], xs[xs.length - 1]], extent(node.concat([actual])), {
-      label: "Forecast bands against what happened",
-      formatY: count,
-      yTitle: "incidents a day"
-    });
+    /* Seventeen years at this width is 911 origins in 806 pixels, and a band drawn over
+       that many points is a smear rather than a range: the two lines are the only things
+       still legible, so they are the only things drawn, thinner, and the caption says the
+       band is still there to be read at a shorter period or off the hover. */
+    var dense = state.range === "all";
+    var thin = dense ? " thin" : "";
+    var frame = chart(
+      dense ? 300 : 320,
+      [xs[0], xs[xs.length - 1]],
+      extent(dense ? [actual, node[middle]] : node.concat([actual])),
+      { label: "Forecast bands against what happened", formatY: count, yTitle: "incidents a day" }
+    );
     shade(frame, day("2020-03-01"), day("2020-06-01"), "the shift");
 
-    frame.plot.appendChild(svg("path", {
-      "class": "band", d: areaPath(frame, xs, node[0], node[levels.length - 1]), "fill-opacity": 0.15
-    }));
-    if (levels.length >= 4) {
+    if (!dense) {
       frame.plot.appendChild(svg("path", {
-        "class": "band", d: areaPath(frame, xs, node[1], node[levels.length - 2]), "fill-opacity": 0.22
+        "class": "band", d: areaPath(frame, xs, node[0], node[levels.length - 1]), "fill-opacity": 0.15
       }));
+      if (levels.length >= 4) {
+        frame.plot.appendChild(svg("path", {
+          "class": "band", d: areaPath(frame, xs, node[1], node[levels.length - 2]), "fill-opacity": 0.22
+        }));
+      }
     }
-    frame.plot.appendChild(svg("path", { "class": "median", d: linePath(frame, xs, node[middle]) }));
-    frame.plot.appendChild(svg("path", { "class": "service", d: linePath(frame, xs, serviceLine) }));
-    frame.plot.appendChild(svg("path", { "class": "actual-line", d: linePath(frame, xs, actual) }));
+    frame.plot.appendChild(svg("path", { "class": "median" + thin, d: linePath(frame, xs, node[middle]) }));
+    if (!dense) {
+      frame.plot.appendChild(svg("path", { "class": "service", d: linePath(frame, xs, serviceLine) }));
+    }
+    frame.plot.appendChild(svg("path", { "class": "actual-line" + thin, d: linePath(frame, xs, actual) }));
 
     var readout = byId("fan-readout");
     attachHover(frame, xs, function (index, overlay) {
@@ -457,19 +518,31 @@
     readout.textContent = "Point at the chart to read a day off it.";
     host.appendChild(frame.root);
 
-    legendInto(byId("fan-legend"), [
+    var entries = [
       { label: "what happened", swatch: "sw-ink" },
-      { label: "the forecast (median)", swatch: "sw-accent" },
-      { label: percent(levels[1]) + " to " + percent(levels[levels.length - 2]) + " and "
-        + percent(levels[0]) + " to " + percent(levels[levels.length - 1]), swatch: "sw-band block" },
-      { label: "staffed to " + percent(service), swatch: "sw-warn dashed" }
-    ]);
+      { label: "the forecast (median)", swatch: "sw-accent" }
+    ];
+    if (!dense) {
+      entries.push({
+        label: percent(levels[1]) + " to " + percent(levels[levels.length - 2]) + " and "
+          + percent(levels[0]) + " to " + percent(levels[levels.length - 1]),
+        swatch: "sw-band block"
+      });
+      entries.push({ label: "staffed to " + percent(service), swatch: "sw-warn dashed" });
+    }
+    legendInto(byId("fan-legend"), entries);
 
     byId("fan-caption").textContent =
       payload.model + " forecasting " + payload.horizon_step + " days ahead for " +
       payload.nodes[state.node] + ", " + labels[0] + " to " + labels[labels.length - 1] +
       ". Each point is one weekly forecast read at the same distance ahead, so the line is a " +
-      "record of the same task repeated, not one forecast extended.";
+      "record of the same task repeated, not one forecast extended." +
+      (dense
+        ? " Over every origin the band and the staffing line are left off and the lines are"
+          + " drawn thin, because 911 forecasts of bands overlap into a block of colour."
+          + " Pick a shorter period to see them, or read them off the hover, which still"
+          + " carries them."
+        : "");
   }
 
   /* The coverage panel -------------------------------------------------------- */
@@ -486,12 +559,15 @@
     var widths = chosen.map(function (one) { return rolling(one.width, state.window); });
     var domain = [xs[0], xs[xs.length - 1]];
 
-    var top = chart(260, domain, extent(covers.concat([[state.nominal]])), {
+    /* Fixed from nothing to everything, not fitted to the window on screen. A scale that
+       grows out of the data makes a collapse to 20 percent look the same size as a wobble
+       of two points, and this chart exists to show the difference between them. */
+    var top = chart(260, domain, [0, 1], {
       label: "Rolling coverage against nominal",
       formatY: function (value) { return (value * 100).toFixed(0) + "%"; },
       yTitle: "outcomes inside the interval"
     });
-    shade(top, day(section.shift[0]), day(section.shift[1]), "the shift");
+    shade(top, day(section.shift[0]), day(section.shift[1]), "the shift", true);
     top.plot.appendChild(svg("line", {
       "class": "nominal", x1: 0, x2: top.inner, y1: top.y(state.nominal), y2: top.y(state.nominal)
     }));
@@ -518,7 +594,7 @@
     readout.textContent = "Point at the chart to read a window off it.";
     host.appendChild(top.root);
 
-    var bottom = chart(150, domain, extent(widths), {
+    var bottom = chart(225, domain, extent(widths), {
       label: "Mean interval width",
       formatY: count,
       yTitle: "width, incidents"
@@ -539,7 +615,315 @@
       "Above: the share of outcomes that fell inside the " + percent(state.nominal) +
       " interval, in a trailing window of " + state.window + " weekly origins, at the " +
       section.level + " level. Below: the mean width of those same intervals. Both are drawn " +
-      "from the same forecasts, so a method that buys coverage by widening shows it here.";
+      "from the same forecasts, so a method that buys coverage by widening shows it here. " +
+      "The coverage scale is fixed from 0 to 100 percent whatever the window, so the fall " +
+      "is the same size every time you look at it.";
+  }
+
+  /* The models panel ---------------------------------------------------------- */
+
+  /* Thin bars: the length is the measurement and the ink is not. Three to a model, one per
+     level of the hierarchy, in one hue getting lighter as the series get smaller, because
+     the three levels are an ordered set and not three unrelated things. */
+  var BAR = 13;
+  var BAR_GAP = 3;
+  var GROUP_GAP = 18;
+  var OWN_GAP = 34;
+  var MODELS_MARGIN = { top: 12, right: 68, bottom: 34, left: 190 };
+
+  /* Decimals that show three significant figures, as headroom.report.tables.decimals_for
+     chooses them, so a CRPS of 135 and one of 8.27 both read as measurements. */
+  function sigPlaces(value) {
+    if (!isNumber(value)) { return 2; }
+    var size = Math.abs(value);
+    if (size >= 100) { return 0; }
+    if (size >= 10) { return 1; }
+    return 2;
+  }
+
+  function withInterval(estimate, places) {
+    return decimals(estimate.point, places) + " [" + decimals(estimate.low, places) +
+      ", " + decimals(estimate.high, places) + "]";
+  }
+
+  /* What the chart draws: every model except the baseline, which is the zero line itself,
+     and then any model scored on its own window, under a divider. */
+  function modelGroups(section) {
+    var groups = [];
+    section.rows.forEach(function (row) {
+      if (row.name !== section.baseline) { groups.push({ row: row, own: false }); }
+    });
+    section.own_windows.forEach(function (row) { groups.push({ row: row, own: true }); });
+    return groups;
+  }
+
+  function skillExtent(groups) {
+    var lo = 0;
+    var hi = 0;
+    groups.forEach(function (group) {
+      group.row.levels.forEach(function (one) {
+        if (!one.skill) { return; }
+        [one.skill.low, one.skill.point, one.skill.high].forEach(function (value) {
+          if (!isNumber(value)) { return; }
+          if (value < lo) { lo = value; }
+          if (value > hi) { hi = value; }
+        });
+      });
+    });
+    var room = (hi - lo) * 0.04 || 0.01;
+    return [lo - room, hi + room];
+  }
+
+  function modelsTable(section) {
+    var table = byId("models-table");
+    var caption = table.querySelector("caption");
+    clear(table);
+    table.appendChild(caption);
+
+    var head = el("thead");
+    var headRow = el("tr");
+    headRow.appendChild(el("th", { scope: "col" }, "Model"));
+    headRow.appendChild(el("th", { scope: "col" }, "Level"));
+    ["CRPS", "CRPS skill", "Coverage at " + percent(section.nominal), "Mean width"]
+      .forEach(function (name) {
+        headRow.appendChild(el("th", { scope: "col", "class": "num" }, name));
+      });
+    headRow.appendChild(el("th", { scope: "col", "class": "num" }, "Compute"));
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    var body = el("tbody");
+    section.rows.concat(section.own_windows).forEach(function (row) {
+      row.levels.forEach(function (one, j) {
+        var line = el("tr");
+        if (row.name === section.baseline) { line.className = "reference"; }
+        var cell = el("th", { scope: "row", "class": row.window ? "wrap" : "" });
+        if (j === 0) {
+          cell.appendChild(document.createTextNode(row.name));
+          if (row.window) {
+            cell.appendChild(el(
+              "span",
+              { "class": "interval" },
+              " " + row.origins + " origins from " + row.first
+            ));
+          }
+        }
+        line.appendChild(cell);
+        line.appendChild(el("td", null, one.level));
+        line.appendChild(estimateCell(one.crps, sigPlaces(one.crps.point), false));
+        if (one.skill) {
+          line.appendChild(estimateCell(one.skill, 3, true, true));
+        } else {
+          line.appendChild(el("td", { "class": "num" }, "reference"));
+        }
+        line.appendChild(estimateCell(one.coverage, 3, false));
+        line.appendChild(estimateCell(one.width, sigPlaces(one.width.point), false));
+        line.appendChild(el("td", { "class": "num" }, j === 0 ? duration(row.fit_seconds) : ""));
+        body.appendChild(line);
+      });
+    });
+    table.appendChild(body);
+
+    byId("models-table-caption").textContent =
+      "The same numbers the chart draws, and the two it cannot: what each model's intervals " +
+      "covered at the " + percent(section.nominal) + " nominal level, and how wide they were. " +
+      "A skill is signed because it is a difference, and a negative one is worse than " +
+      section.baseline + ". Every estimate carries its 95 percent moving-block bootstrap " +
+      "interval over forecast origins. A skill is shown here as a share, and on the chart as " +
+      "a percentage of the same thing.";
+  }
+
+  function drawModels() {
+    var section = state.dashboard.models;
+    var host = byId("models-chart");
+    clear(host);
+    var groups = modelGroups(section);
+    if (!groups.length) { return; }
+
+    var names = groups[0].row.levels.map(function (one) { return one.level; });
+    var span = skillExtent(groups);
+    var inner = WIDTH - MODELS_MARGIN.left - MODELS_MARGIN.right;
+    var groupDeep = names.length * (BAR + BAR_GAP) - BAR_GAP;
+    var tops = [];
+    var deep = 0;
+    groups.forEach(function (group, i) {
+      if (i) { deep += (group.own && !groups[i - 1].own) ? OWN_GAP : GROUP_GAP; }
+      tops.push(deep);
+      deep += groupDeep;
+    });
+    var height = deep + MODELS_MARGIN.top + MODELS_MARGIN.bottom;
+
+    var root = svg("svg", {
+      viewBox: "0 0 " + WIDTH + " " + height,
+      role: "img",
+      "aria-label": "CRPS skill against " + section.baseline + ", every model, three levels"
+    });
+    var plot = svg("g", {
+      transform: "translate(" + MODELS_MARGIN.left + "," + MODELS_MARGIN.top + ")"
+    });
+    root.appendChild(plot);
+    function x(value) { return (value - span[0]) / (span[1] - span[0]) * inner; }
+
+    ticks(span[0], span[1], 5).forEach(function (value) {
+      var at = x(value);
+      if (at < -1 || at > inner + 1) { return; }
+      plot.appendChild(svg("line", { "class": "gridline", x1: at, x2: at, y1: -6, y2: deep }));
+      var tick = svg("text", { "class": "tick", x: at, y: deep + 17, "text-anchor": "middle" });
+      tick.textContent = (value * 100).toFixed(0) + "%";
+      plot.appendChild(tick);
+    });
+    plot.appendChild(svg("line", { "class": "zero", x1: x(0), x2: x(0), y1: -6, y2: deep }));
+    var zero = svg("text", {
+      "class": "zero-label", x: x(0), y: deep + 31, "text-anchor": "middle"
+    });
+    zero.textContent = section.baseline + ", the baseline";
+    plot.appendChild(zero);
+
+    var readout = byId("models-readout");
+    function reset() { readout.textContent = "Point at a bar to read that model off it."; }
+    function show(row, one, own) {
+      clear(readout);
+      readout.appendChild(el("span", { "class": "when" }, row.name + ", " + one.level));
+      [
+        ["CRPS", withInterval(one.crps, sigPlaces(one.crps.point))],
+        ["skill", one.skill ? signedPercent(one.skill.point, 1) : "reference"],
+        ["coverage at " + percent(section.nominal), percent(one.coverage.point, 1)],
+        ["width", count(one.width.point)],
+        [own ? "to run" : "to fit", duration(row.fit_seconds)]
+      ].forEach(function (pair) {
+        var slot = el("span", { "class": "pair" });
+        slot.appendChild(el("span", { "class": "key" }, pair[0] + " "));
+        slot.appendChild(document.createTextNode(pair[1]));
+        readout.appendChild(slot);
+      });
+    }
+
+    groups.forEach(function (group, i) {
+      var row = group.row;
+      var top = tops[i];
+      if (group.own && (i === 0 || !groups[i - 1].own)) {
+        var at = top - OWN_GAP / 2;
+        plot.appendChild(svg("line", {
+          "class": "divider", x1: 8 - MODELS_MARGIN.left, x2: inner, y1: at, y2: at
+        }));
+        var note = svg("text", {
+          "class": "divider-label", x: 8 - MODELS_MARGIN.left, y: at - 7
+        });
+        note.textContent = "pretrained, on its own window: never pooled with the models above";
+        plot.appendChild(note);
+      }
+
+      var parts = row.name.split(", ");
+      var lines = [
+        parts[0],
+        parts.slice(1).join(", "),
+        (group.own ? row.origins + " origins, " : "") + duration(row.fit_seconds) +
+          (group.own ? " to run" : " to fit")
+      ];
+      lines.forEach(function (text, j) {
+        if (!text) { return; }
+        var label = svg("text", {
+          "class": j === 0 ? "row-label" : "row-note",
+          x: -13,
+          y: top + 11 + j * 13,
+          "text-anchor": "end"
+        });
+        label.textContent = text;
+        plot.appendChild(label);
+      });
+
+      row.levels.forEach(function (one, j) {
+        var y = top + j * (BAR + BAR_GAP);
+        /* The hit target is the whole row rather than the bar, because a bar at one percent
+           skill is two pixels wide and nobody can point at it. */
+        var catcher = svg("rect", {
+          "class": "catcher",
+          x: 8 - MODELS_MARGIN.left,
+          y: y - BAR_GAP / 2,
+          width: inner + MODELS_MARGIN.left - 8,
+          height: BAR + BAR_GAP,
+          fill: "transparent"
+        });
+        plot.appendChild(catcher);
+        catcher.addEventListener("pointerenter", function () { show(row, one, group.own); });
+        catcher.addEventListener("pointerdown", function () { show(row, one, group.own); });
+
+        var skill = one.skill;
+        if (!skill || !isNumber(skill.point)) { return; }
+        var from = x(Math.min(0, skill.point));
+        var to = x(Math.max(0, skill.point));
+        plot.appendChild(svg("rect", {
+          "class": "bar lv" + j + (group.own ? " own" : ""),
+          x: from, y: y, width: Math.max(1.5, to - from), height: BAR, rx: 3
+        }));
+        var end = to;
+        if (isNumber(skill.low) && isNumber(skill.high)) {
+          var mid = y + BAR / 2;
+          plot.appendChild(svg("line", {
+            "class": "whisker", x1: x(skill.low), x2: x(skill.high), y1: mid, y2: mid
+          }));
+          [skill.low, skill.high].forEach(function (edge) {
+            plot.appendChild(svg("line", {
+              "class": "whisker", x1: x(edge), x2: x(edge), y1: y + 2.5, y2: y + BAR - 2.5
+            }));
+          });
+          end = Math.max(end, x(skill.high));
+        }
+        var value = svg("text", { "class": "bar-value", x: end + 8, y: y + BAR - 2.5 });
+        value.textContent = signedPercent(skill.point, 1);
+        plot.appendChild(value);
+      });
+    });
+
+    root.addEventListener("pointerleave", reset);
+    reset();
+    host.appendChild(root);
+
+    legendInto(byId("models-legend"), names.map(function (name, j) {
+      return { label: name, swatch: "sw-lv" + j + " solid" };
+    }));
+
+    var trained = section.rows.map(function (row) { return shortName(row.name); });
+    byId("models-lede").textContent =
+      "Every model this project trained, on one chart, scored on the same " +
+      section.origins.toLocaleString() + " forecasts of the same days: " + listing(trained) +
+      ". The bar is CRPS skill: the share of " + section.baseline + "'s loss the model takes " +
+      "away, so higher is better and zero is no better than planning from last week. CRPS " +
+      "scores the whole distribution rather than the middle of it, which is why it is the bar " +
+      "and the average error is not here at all. What each model cost is under its name, " +
+      "because two of these bars are the same length at very different prices.";
+
+    var ownSentence = "";
+    if (section.own_windows.length) {
+      var shot = section.own_windows[0];
+      ownSentence = " " + shortName(shot.name) + " sits under the divider rather than among the bars " +
+        "above it: it is pretrained, its weights postdate most of these origins, and it is " +
+        "scored only on the window whose whole fortnight falls after its training data (" +
+        shot.origins + " origins from " + shot.first + "). Its bars are comparable with each " +
+        "other and with nothing above the line.";
+    }
+    byId("models-caption").textContent =
+      "CRPS skill against " + section.baseline + " at each level of the hierarchy: the city, " +
+      "the 5 boroughs and the 31 dispatch areas. Whiskers are 95 percent moving-block " +
+      "bootstrap intervals over forecast origins, and the comparison is paired, because every " +
+      "model forecast the same origins." + ownSentence;
+
+    var conformal = [];
+    var theirs = [];
+    section.rows.concat(section.own_windows).forEach(function (row) {
+      if (row.name === section.baseline) { return; }
+      (row.kind === "boosting" || row.kind === "zero-shot" ? conformal : theirs)
+        .push(shortName(row.name));
+    });
+    byId("models-note").textContent =
+      "The coverage column is not one promise repeated. " + listing(theirs) + " are scored on " +
+      "the quantiles they produce themselves, with no conformal step, so nothing is promised " +
+      "for them and the number is only what happened. " + listing(conformal) + " forecast a " +
+      "median and are given a conformal distribution built from their own past errors, whose " +
+      "guarantee holds on average over time and only where errors are exchangeable, which " +
+      "demand through a pandemic is not.";
+
+    modelsTable(section);
   }
 
   /* The reconciliation panel -------------------------------------------------- */
@@ -667,6 +1051,13 @@
           null,
           saved > 0 ? "up" : "down"
         ));
+        headline.appendChild(statCard(
+          decimals(saved, 1) + " unit-days",
+          "of idle or missing cover avoided a day: " +
+            worth(saved, section.inputs.hours_per_unit_day),
+          null,
+          saved > 0 ? "up" : "down"
+        ));
       }
     }
 
@@ -679,8 +1070,11 @@
       "unit-day costs " + section.inputs.cost_over + " and a missing one " +
       section.inputs.cost_under + ", so the arithmetic says to staff to the " + percent(implied) +
       " busiest day the forecast thinks is plausible. Those three numbers are a small table in " +
-      "the repository, not constants in the code. An oracle that knew each day's demand would " +
-      "staff " + decimals(section.oracle_units, 1) + " units a day and cost nothing.";
+      "the repository, not constants in the code, and so is the fourth, the " +
+      decimals(section.inputs.hours_per_unit_day, 0) + " hours a unit-day stands for, which " +
+      "prices nothing and only lets a cost be read as crew-hours. An oracle that knew each " +
+      "day's demand would staff " + decimals(section.oracle_units, 1) +
+      " units a day and cost nothing.";
   }
 
   /* Controls ------------------------------------------------------------------ */
@@ -766,7 +1160,7 @@
       " conformal), over " + payload.origins.count.toLocaleString() + " forecasts";
     byId("hero-worst").textContent = percent(worst, 1);
     byId("hero-worst-unit").textContent =
-      "in the worst " + section.window_origins + " weeks, which is not a rounding error";
+      "in the worst " + section.window_origins + " weeks of the seventeen years";
 
     var staffing = payload.staffing;
     var at = staffing.service_levels.indexOf(staffing.inputs.implied_service_level);
@@ -778,11 +1172,25 @@
       if (method.name === "Seasonal naive") { naive = method; }
     });
     if (best && naive && naive.cost[at].point > 0) {
-      var share = (naive.cost[at].point - best.cost[at].point) / naive.cost[at].point;
+      var saved = naive.cost[at].point - best.cost[at].point;
+      var share = saved / naive.cost[at].point;
       byId("hero-saving").textContent = percent(share, 0) + " lower";
       byId("hero-saving-unit").textContent =
         "cost of being wrong, at the service level the costs imply";
+      byId("hero-saving-worth").textContent = worth(saved, staffing.inputs.hours_per_unit_day);
     }
+
+    var models = payload.models;
+    var trained = models.rows.map(function (row) { return shortName(row.name); });
+    var pretrained = models.own_windows.map(function (row) { return shortName(row.name); });
+    byId("hero-models").textContent =
+      "Trained and scored on every one of those forecasts: " + listing(trained) + "." +
+      (pretrained.length
+        ? " " + listing(pretrained) + " is pretrained, trained on none of this data, and is"
+          + " scored on its own clean window."
+        : "") +
+      " They are all on one chart further down, and the statistical models this page does not" +
+      " draw are in the repository's tables.";
     byId("hero-context").textContent =
       payload.origins.count.toLocaleString() + " weekly forecasts of the next " +
       payload.origins.horizon_days + " days, " + payload.origins.first + " to " +
@@ -807,21 +1215,23 @@
 
   function start() {
     load("dashboard.json").then(function (payload) {
-      if (payload.schema_version !== 1) {
+      if (payload.schema_version !== 2) {
         throw new Error("dashboard.json is schema version " + payload.schema_version +
-          ", and this page reads version 1");
+          ", and this page reads version 2");
       }
       state.dashboard = payload;
       fillHero(payload);
       fillCoverageControls(payload.coverage);
       fillServiceControl(payload.staffing);
       drawCoverage();
+      drawModels();
       drawReconciliation();
       drawStaffing();
       return load("forecast.json");
     }).then(function (payload) {
       state.forecast = payload;
       byId("fan-step").textContent = String(payload.horizon_step);
+      byId("fan-model").textContent = payload.model;
       fillNodes(payload);
       drawFan();
     }).catch(function (error) {
