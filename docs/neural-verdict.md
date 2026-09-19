@@ -166,7 +166,8 @@ widens with the service level, to +2.09 at 90 percent and +4.53 at 95.
 
 ## For `PLAN.md` section 9
 
-Rule C candidate 3, "a global neural model as the default forecaster", predicted the neural
+`PLAN.md` section 9's candidate 3, "a global neural model as the default forecaster",
+predicted the neural
 models would be "competitive at the top level, no better or worse at the leaves, at many
 times the compute". **That is an accurate description of PatchTST** and a poor one of
 N-HiTS, which was not competitive anywhere. The plan was right about the architecture it

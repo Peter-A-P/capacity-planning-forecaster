@@ -226,7 +226,7 @@ to close.
 **Worst 90-day window at the city, 90 percent nominal: coverage 0.156, ending
 2020-05-04.** Whole-period coverage at the same level and rate is 0.864. One number hides
 a collapse; the rolling window is why the chart is a chart. This is the raw material for
-`PLAN.md` section 9's first Rule C candidate, and the thing adaptive conformal intervals
+`PLAN.md` section 9's first candidate, and the thing adaptive conformal intervals
 have to fix.
 
 ---
@@ -367,7 +367,7 @@ conformal step, not dropped.
 
 ### Choosing by MAE would not have misled here
 
-`PLAN.md` section 9, Rule C candidate 2, expected the model with the lowest absolute
+`PLAN.md` section 9, candidate 2, expected the model with the lowest absolute
 error of the median to differ from the one with the lowest CRPS on at least one level. On
 these three models it does not: ETS, then Theta, then MSTL, by both scores at every level.
 
@@ -428,7 +428,7 @@ What this says:
   doing its job, not the booster.
 * **For the neural verdict this is the useful half.** If N-HiTS or PatchTST beat ETS, the
   gain cannot be put down to learning across series or to holidays, because a global
-  model with both did not get it. If they tie, the plan's Rule C candidate 3 is supported
+  model with both did not get it. If they tie, `PLAN.md` section 9's candidate 3 is supported
   twice over.
 
 ### What it sees, and the one advantage it has

@@ -130,7 +130,7 @@ def test_split_conformal_covers_on_an_exchangeable_sequence():
 
 
 def test_split_conformal_collapses_through_a_shift_and_only_recovers_with_the_window():
-    """Rule C candidate 1, on a fixture. The real version is the March 2020 chart."""
+    """PLAN.md section 9's candidate 1, on a fixture. The real one is the March 2020 chart."""
     at = 600
     scores = _shifted_scores(at=at)
     method = SplitConformal(ALPHA, window=52)

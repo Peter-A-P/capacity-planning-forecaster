@@ -7,7 +7,7 @@ model or the distribution. It is a genuinely remarkable guarantee.
 
 It does not apply here. A time series is not exchangeable, and the whole point of this
 project is the period when it is least exchangeable of all. Split conformal is kept
-because watching it fail is the evidence (PLAN.md section 9, Rule C candidate 1), not
+because watching it fail is the evidence (PLAN.md section 9, candidate 1), not
 because its guarantee is believed.
 
 ## The one thing that must not be got wrong

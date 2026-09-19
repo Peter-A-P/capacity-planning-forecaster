@@ -2099,7 +2099,7 @@ def serve(
     """Serve the dashboard locally with the headers the host will send.
 
     `python -m http.server` sends none of the headers in `staticwebapp.config.json`, so it
-    shows a page the content security policy would partly refuse. On project 01 that hid a
+    shows a page the content security policy would partly refuse. On a sister project that hid a
     broken chart on the live site for two weeks while every local check looked correct, so
     this serves the site the way it will be served.
 

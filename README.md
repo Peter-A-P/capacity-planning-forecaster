@@ -5,9 +5,9 @@ ranges that actually hold when conditions shift, turned into a staffing number a
 service level. Overstaffing costs money; understaffing costs patients. This puts a
 defensible number on both, site by site, rolling up to the region.
 
-**Status: live.** Every model the plan names is measured, the tables below are complete, and
-the dashboard is published at **[capacity.peterparker.ca](https://capacity.peterparker.ca)**.
-The plan is in [PLAN.md](PLAN.md): public demand series, everything on a desktop CPU.
+**The dashboard is live at [capacity.peterparker.ca](https://capacity.peterparker.ca).** Every
+model the plan names is measured and the tables below are complete. The plan is in
+[PLAN.md](PLAN.md): public demand series, everything on a desktop CPU.
 
 The data is loaded and checked ([docs/data.md](docs/data.md)). The baseline, the conformal
 intervals and the statistical models (ETS, Theta, MSTL and AutoARIMA, 964 weekly origins
@@ -170,6 +170,33 @@ later, which is exactly the forecast horizon; and by the time they arrive the ou
 dropped through the bottom. A 14-day forecast cannot see a shift that happens inside its
 own horizon, and no amount of interval calibration changes that.
 
+## What did not work
+
+Four things were built, measured and not adopted. Each is a real cost paid, and the numbers
+are the reason, not a preference.
+
+- **N-HiTS, the named neural forecaster: beaten everywhere.** CRPS against ETS, per origin,
+  paired: city +28.39 [+21.72, +40.03], borough +7.19, dispatch area +1.98, where positive
+  is worse. Its own 90 percent intervals covered 0.58 to 0.68 of outcomes. About 18.3 hours
+  of fitting against ETS's 1.5. It was not the refit schedule (no trend with weeks since a
+  refit), not calibration alone (a conformal median is still behind ETS), and not the seed
+  (a second seed over 20 refits is no better on average).
+- **PatchTST: a tie at the top, a loss at the leaves, at seventeen times the cost.** City
+  -3.45 [-6.72, +2.48] and borough -0.31 [-0.89, +0.67], both intervals crossing zero, so
+  neither is a win; dispatch area +0.103 [+0.041, +0.203], which is a loss. It is the best
+  calibrated model here (0.896 / 0.901 / 0.900 from its own quantiles) and its city CRPS is
+  the lowest in the project, and it still cannot be claimed. 27.3 hours of fitting.
+- **AutoARIMA: five times ETS's cost to finish third of four.** Fifteen hours to confirm
+  what the cheapest statistical model already said.
+- **A GPU.** A GTX 1650 gave no speedup over the CPU on these fits, so the published times
+  are CPU times and no GPU is bought for this project.
+
+[docs/neural-verdict.md](docs/neural-verdict.md) has the full verdict, including the one
+model that did not lose. Conformal prediction is also implemented directly rather than
+through MAPIE, because the update has to respect when an outcome becomes known: with weekly
+origins, a 14-day-ahead forecast's error has not happened yet at the next origin, and a
+library that assumes it has would leak the future into the interval.
+
 ## The dashboard: [capacity.peterparker.ca](https://capacity.peterparker.ca)
 
 The same numbers, but you can move them. `dashboard/` is a static page over two JSON files
@@ -215,15 +242,23 @@ newsvendor decision layer turns the reconciled distribution into staffing at a s
 level and realises each method's cost against actual demand. A static dashboard shows the
 fan charts, the coverage chart and a service-level slider.
 
-## Part of a portfolio
+## What this reuses
 
-One of fifteen projects. It reuses the static decision-app pattern
-from the Intervention Targeting Engine and is the portfolio's second Azure hosting example.
+The dashboard is built on the static decision-app pattern from the
+[Intervention Targeting Engine](https://github.com/Peter-A-P/intervention-targeting-engine),
+which built it first: hand-written HTML, CSS and plain JavaScript over precomputed JSON,
+with no framework and no off-origin request.
 
 ## How this was built
 
 Design, methodology, evaluation choices and judgement are Peter Parker's, including years
 of health-sector utilisation forecasting. AI coding assistants (Claude Code) were used for
-implementation and drafting, the way a senior engineer uses them in 2026. Every number in
-the results tables is reproducible from this repository with one command, and that
-reproducibility is the evidence that matters.
+implementation and drafting, under review at every step. Every number in the results tables
+is reproducible from this repository with one command.
+
+## Licence
+
+MIT, in [LICENSE](LICENSE). The two fonts the dashboard serves are SIL Open Font License
+1.1 and say so in [dashboard/fonts/LICENSE.txt](dashboard/fonts/LICENSE.txt). No demand data
+is redistributed here: the loader fetches it from NYC Open Data under the City of New York's
+terms, and only derived aggregates are committed ([docs/data.md](docs/data.md)).

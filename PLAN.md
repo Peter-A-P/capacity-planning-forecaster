@@ -1,39 +1,35 @@
 # Plan: Capacity Planning Forecaster
 
-**Written:** 2026-09-07. **Status:** building, week 1 started 2026-09-12.
+**Written:** 2026-09-07. **Status:** built; the dashboard is live.
+[docs/state.md](docs/state.md) is the working state.
 
-**Build:** two weeks, Sep 12 to Sep 25 2026. **Package:** `headroom`. **Fed by:** nothing
-in the portfolio. **Feeds:** nothing; reuses 01's static decision-app pattern.
+**Build:** two weeks, Sep 12 to Sep 25 2026. **Package:** `headroom`. **Fed by:** nothing.
+**Feeds:** nothing; the dashboard reuses the Intervention Targeting Engine's static
+decision-app pattern.
 
-> **Moved forward at rev. 4, 2026-09-12.** The plan slotted this for Jul 19 to Aug 1
-> 2027. `docs/SEQUENCE.md` puts 08 in the independent set with 01 and 09, and section 1
-> above is why nothing had to wait: this project calls no model vendor, so neither the
-> 04 gateway nor the 03 gate is on its path, and its data is twenty-one years of
-> published history that does not need calendar time to accumulate. Brought forward on
-> Peter's decision; the two-week duration, the budget and the scope are unchanged.
+> **Brought forward, 2026-09-12.** This was scheduled for mid-2027 and was started early
+> instead. Nothing had to wait: it calls no model vendor, and its data is twenty-one years
+> of published history that does not need calendar time to accumulate. The two-week
+> duration, the budget and the scope are unchanged.
 >
-> One deliverable moves out of the two weeks with it. The dashboard reuses 01's static
-> decision-app pattern, and 01 builds that in its own week 7 (Oct 19 to 25 2026). Rather
-> than invent the pattern here and have 01 inherit it, the dashboard is held until 01
-> has it. Week 2 below ships everything else, and the dashboard and `v0.1.0` follow after
-> Oct 25. Section 10's definition of done is unchanged; the dashboard box is simply the
-> last one ticked.
+> One deliverable moved with it. The dashboard reuses a static decision-app pattern that
+> the Intervention Targeting Engine was building at the time, so rather than invent it here
+> and have that project inherit it, the dashboard was held until it existed. Week 2 below
+> shipped everything else.
 >
-> **The dependency cleared on 2026-09-18, and with it the date.** 01 finished well ahead of
-> its week 7 and its repository is public, so the pattern exists and can be read: `demo/`
-> in `Peter-A-P/intervention-targeting-engine`, a hand-written `index.html`, `style.css`
-> and plain `.js` against precomputed JSON, built by `src/itx/demo/build.py` and checked by
-> `tests/test_demo.py`. Nothing about the dashboard was ever waiting on calendar time; "after
-> Oct 25" was 01's delivery date and not a cooling-off period. The dashboard can be built as
-> soon as it is wanted, and the only part of it that is not a local build is publishing it,
-> which is a separate decision because it provisions hosting.
+> **That cleared on 2026-09-18.** The pattern exists and can be read: `demo/` in
+> `Peter-A-P/intervention-targeting-engine`, a hand-written `index.html`, `style.css` and
+> plain `.js` against precomputed JSON, built by `src/itx/demo/build.py` and checked by
+> `tests/test_demo.py`. Nothing about the dashboard was ever waiting on calendar time.
+> Publishing it stayed a separate decision from building it, because publishing provisions
+> hosting.
 
-This project calls no language model, so neither the 04 gateway nor the 03 gate is on its
-path. Every number below comes from a rolling-origin backtest with block-bootstrap
-intervals over forecast origins. It is the shortest project in the plan and the one whose
-seniority signal per week is highest: forecasting portfolios report a point-estimate MAE
-and stop; this one reports whether the intervals held when the world changed, whether the
-sites sum to the region, and what the forecast means for the rota.
+This project calls no language model, so nothing about it waits on one. Every number below
+comes from a rolling-origin backtest with block-bootstrap intervals over forecast origins.
+It is a two-week build, and the scope is chosen to fit: most demand-forecasting write-ups
+report a point-estimate MAE and stop, while this one reports whether the intervals held
+when the world changed, whether the sites sum to the region, and what the forecast means
+for the rota.
 
 > **Employer note.** The vocabulary comes from years of provincial health analytics; the
 > data does not. Public emergency-services and hospital demand series from other
@@ -89,7 +85,7 @@ forecast for a living.
 ### 2.3 Probabilistic scoring only
 
 CRPS computed from the quantile set, pinball loss per quantile, coverage and width. MAE is
-reported in a footnote for readers who look for it, never as the headline, and Rule C
+reported in a footnote for readers who look for it, never as the headline, and section 9's
 candidate 2 shows what choosing a model by MAE would have done.
 
 ### 2.4 Adaptive conformal, with the assumption stated
@@ -166,8 +162,8 @@ N-HiTS and PatchTST through NeuralForecast with a multi-quantile loss, trained a
 models across the series on the laptop's CPU (small data; minutes per fit). The paired
 comparison against the best statistical model is per level and horizon with intervals. If
 the neural models do not beat the statistical ones at the leaf level, or only at the top,
-the README says exactly that. Judgement reads as seniority; "deep learning won" reads as
-naive.
+the README says exactly that. A verdict that can fall either way is worth something;
+"deep learning won" decided in advance is worth nothing.
 
 **As built, 2026-09-14 (N-HiTS).** "Minutes per fit" was right and decides the design: a
 fit on the 37 series is about 5.5 minutes on the six-core machine (332 seconds at 9 to 27
@@ -390,11 +386,12 @@ rather than in a terminal. Three deviations from the line above, all deliberate:
   `headroom.report.charts.rolling_mean`, which is now public for that reason.
 
 `headroom serve` serves the site with the headers **and the content types** in
-`dashboard/staticwebapp.config.json`. A plain file server sends neither, which on project 01
-hid a broken chart on the live site for two weeks while every local check looked correct.
+`dashboard/staticwebapp.config.json`. A plain file server sends neither, which on
+the Intervention Targeting Engine hid a broken chart on the live site for two weeks while every local check looked correct.
 
 **The page is part of peterparker.ca even though another host serves it**, so it takes that
-site's palette, its two fonts and the 3px rule over the page, exactly as 01's demo does. The
+site's palette, its two fonts and the 3px rule over the page, exactly as the Intervention Targeting Engine's
+demo does. The
 fonts are copied into `dashboard/fonts/` rather than linked from the main site: the content
 security policy allows no off-origin request, and a font is a request. Both are SIL Open
 Font License and `dashboard/fonts/LICENSE.txt` records where they came from. Chart colours
@@ -414,8 +411,8 @@ quantile equals the cost ratio on fixtures; the dashboard JSON validates against
 | Dates | Built | Done when |
 |---|---|---|
 | Sep 12 to 18 2026 | NYC loader, aggregation, checks, hierarchy; rolling-origin harness; baselines and statistical models with quantiles; CRPS, pinball, coverage, width, skill, block bootstrap; split and adaptive conformal; the coverage-through-shift chart | Skill table with CIs for every statistical method; coverage chart through March 2020 |
-| Sep 19 to 25 2026 | LightGBM global model; N-HiTS and PatchTST; TimesFM zero-shot with its clean window; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; Rule C; README | Every table in section 1 filled |
-| After Oct 25 2026 | Dashboard exported and deployed on 01's static pattern; `v0.1.0`; repository public | Dashboard live |
+| Sep 19 to 25 2026 | LightGBM global model; N-HiTS and PatchTST; TimesFM zero-shot with its clean window; MinT and probabilistic reconciliation with coherence verified; decision layer and realised cost; neural verdict; NHS dataset if time allows; the rejected-approach write-up; README | Every table in section 1 filled |
+| 2026-09-18 | Dashboard exported and deployed on the reused static pattern; repository public; `v0.1.0` | Dashboard live |
 
 First to drop if behind: the NHS dataset; PatchTST (N-HiTS stays as the named neural
 model, TimesFM as the pretrained one, and LightGBM as the global non-neural one);
@@ -460,9 +457,10 @@ Well under the CA$25 line. Actual spend is recorded privately beside the estimat
 
 ## 7. Handover
 
-`headroom` v0.1.0 once the dashboard ships, after 2026-10-25. Nothing imports it. The conformal and scoring modules are
-small and importable; the static decision-app pattern is 01's, reused. The coverage chart
-and the neural verdict are figures for the portfolio site.
+`headroom` is tagged v0.1.0 when the repository goes public. Nothing imports it. The
+conformal and scoring modules are small and importable; the static decision-app pattern is
+the Intervention Targeting Engine's, reused. The coverage chart and the neural verdict are
+the two figures worth reusing elsewhere.
 
 ## 8. Risks
 
@@ -478,7 +476,7 @@ and the neural verdict are figures for the portfolio site.
 | Open data terms | NYC Open Data and the Open Government Licence permit this use; recorded in `docs/data.md` |
 | Employer boundary | None. Other jurisdictions' public data; no provincial series |
 
-## 9. Rule C candidates
+## 9. What might not work, named in advance
 
 1. **Split conformal through the shift.** Expected: coverage collapses in March 2020 and
    recovers only when the calibration window rolls past it, while the adaptive method
@@ -496,21 +494,22 @@ and the neural verdict are figures for the portfolio site.
    two is the evidence, and it is what an evaluation that ignored the leak would have
    reported.
 
-Whichever produces the clearest evidence becomes `docs/rejected.md`.
+Whichever produces the clearest evidence is written up, whichever way it falls. The
+README's "What did not work" section is where it ends up.
 
 ## 10. Definition of done
 
-- [ ] Seasonal naive and statistical baselines reported first, with every later result as skill against them
+- [x] Seasonal naive and statistical baselines reported first, with every later result as skill against them
 - [ ] CRPS and pinball loss per quantile, per method and level, with block-bootstrap CIs
-- [ ] Empirical coverage at three nominal levels plotted in a rolling window through the 2020 shift, adaptive against split conformal, with widths
-- [ ] Conformal assumptions stated in the README beside the chart
-- [ ] MinT and probabilistic reconciliation; coherence verified at every origin; effect on accuracy per level reported
-- [ ] Decision layer: staffing at a stated service level from the reconciled distribution; newsvendor quantile from stated costs; realised cost per method against an oracle
-- [ ] N-HiTS and PatchTST against the best statistical model, paired with CIs; `docs/neural-verdict.md` says where they did not earn their complexity
-- [ ] LightGBM global model against the best statistical and best neural model, paired with CIs, its holiday features stated
-- [ ] TimesFM zero-shot against the best statistical model on its clean window, with the leak and its pretraining cutoff stated, in `docs/neural-verdict.md`
-- [ ] Static dashboard live at capacity.peterparker.ca
-- [ ] One rejected approach documented with evidence (Rule C)
+- [x] Empirical coverage at three nominal levels plotted in a rolling window through the 2020 shift, adaptive against split conformal, with widths
+- [x] Conformal assumptions stated in the README beside the chart
+- [x] MinT and probabilistic reconciliation; coherence verified at every origin; effect on accuracy per level reported
+- [x] Decision layer: staffing at a stated service level from the reconciled distribution; newsvendor quantile from stated costs; realised cost per method against an oracle
+- [x] N-HiTS and PatchTST against the best statistical model, paired with CIs; `docs/neural-verdict.md` says where they did not earn their complexity
+- [x] LightGBM global model against the best statistical and best neural model, paired with CIs, its holiday features stated
+- [x] TimesFM zero-shot against the best statistical model on its clean window, with the leak and its pretraining cutoff stated, in `docs/neural-verdict.md`
+- [x] Static dashboard live at capacity.peterparker.ca
+- [x] One rejected approach documented with evidence
 - [ ] Repository public, `v0.1.0` tagged
 
 ## 11. Deferred

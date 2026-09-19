@@ -213,7 +213,7 @@ def mae(
 ) -> npt.NDArray[np.float64]:
     """Mean absolute error, reported as a footnote and never as the headline.
 
-    It is here because readers look for it, and because PLAN.md section 9's second Rule C
+    It is here because readers look for it, and because PLAN.md section 9's second
     candidate is what choosing a model by this number would have done. A point forecast
     cannot be scored on whether its range held.
 

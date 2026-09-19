@@ -4,28 +4,29 @@ The dashboard is `dashboard/`: static HTML, CSS and JavaScript against precomput
 written by `headroom export`. There is no build step, no backend and no dependency to
 install, so hosting it is a file copy and one DNS record.
 
-`PLAN.md` specifies Azure Static Web Apps on the free tier, and this is the portfolio's
-second Azure hosting example after the Intervention Targeting Engine's
-`targeting.peterparker.ca`. That deployment is the model for this one and its account of
-what went wrong is worth reading before starting:
+`PLAN.md` specifies Azure Static Web Apps on the free tier. The Intervention Targeting
+Engine's `targeting.peterparker.ca` was set up the same way first, and its account of what
+went wrong is worth reading before starting:
 [`docs/deploy.md` in intervention-targeting-engine](https://github.com/Peter-A-P/intervention-targeting-engine/blob/main/docs/deploy.md).
 
-## Check this first, because it is wrong on this machine today
+## Done, 2026-09-18
 
-`az account show` here reports **Main-Subscription**, and `az staticwebapp list` in it
-returns nothing. The portfolio's existing apps are not in it, so the CLI is signed in to the
-wrong tenant, or the subscription that holds them is not visible to this session. **Do not
-create anything until `az staticwebapp list` shows the portfolio site's app and
-`targeting-peterparker-ca`.** Creating the app in whichever subscription happens to be
-default is how a personal project ends up billed to the wrong place.
+The app is `capacity-peterparker-ca`, alongside the other sites in the same resource group,
+and `capacity.peterparker.ca` resolves to it with a managed certificate. What follows is how
+it was done and how to do it again.
+
+**Check the subscription before creating anything.** `az staticwebapp list -o table` has to
+show the apps that already exist; if it comes back empty the CLI is signed in to the wrong
+tenant, and creating the app in whichever subscription happens to be default is how a
+personal project ends up billed to the wrong place.
 
 ```powershell
-az login                         # pick the tenant that holds the portfolio's apps
-az account set --subscription "<the POCs subscription>"
-az staticwebapp list -o table    # the portfolio site and targeting should both be listed
+az login                         # pick the tenant that holds the existing apps
+az account set --subscription "<the subscription>"
+az staticwebapp list -o table    # the other sites should be listed
 ```
 
-Note the **resource group** the existing apps are in; the new one goes beside them.
+Note the **resource group** they are in; the new one goes beside them.
 
 ## Order of work
 
@@ -40,7 +41,7 @@ Microsoft's walkthrough is
 
 | Setting | Value |
 |---|---|
-| Resource group | the one the other portfolio apps are in |
+| Resource group | the one the other apps are in |
 | Name | `capacity-peterparker-ca` |
 | Plan type | **Free** |
 | Region | any near you; content is served from a CDN regardless |
@@ -48,8 +49,9 @@ Microsoft's walkthrough is
 
 **Choose "Other", not GitHub.** Connecting GitHub commits a workflow and an Azure
 credential into this repository, which is about to go public. The deployment in step 4
-pushes from this machine instead and puts nothing in the repository. Route A in 01's
-runbook is the GitHub alternative if you ever want the live page to track `main`.
+pushes from this machine instead and puts nothing in the repository. Route A in the
+Intervention Targeting Engine's runbook is the GitHub alternative, if you ever want the
+live page to track `main`.
 
 Or from the CLI:
 
@@ -60,8 +62,8 @@ az staticwebapp create --name capacity-peterparker-ca --resource-group <group> -
 ## 2. A second app, not a second hostname
 
 A Static Web App serves one set of files to every hostname attached to it and does not route
-by host, so `capacity.peterparker.ca` cannot be a second hostname on the portfolio site's
-app. That is why this is its own app, exactly as `targeting` is.
+by host, so `capacity.peterparker.ca` cannot be a second hostname on the main site's app.
+That is why this is its own app, exactly as `targeting` is.
 
 ## 3. The DNS record, at Cloudflare
 
@@ -80,7 +82,8 @@ single CNAME; only an apex domain needs the TXT validation dance, and this is a 
 3. **Set proxy status to DNS only, the grey cloud, not the orange one.** This is the step
    that goes wrong. A proxied record hides the real target behind Cloudflare's addresses, so
    Azure's validation cannot see the CNAME it asked for, and the managed TLS certificate is
-   never issued. 01's deployment records the same thing. Cloudflare's reference:
+   never issued. The Intervention Targeting Engine's deployment records the same thing.
+   Cloudflare's reference:
    [Proxy status](https://developers.cloudflare.com/dns/proxy-status/).
 
 4. In the Static Web App: **Settings** → **Custom domains** → **+ Add** → **Custom domain on
@@ -119,8 +122,8 @@ Rerun both lines whenever `headroom export` rewrites the JSON.
   <http://localhost:8080>. **Not `python -m http.server`.** A plain file server sends none of
   the headers in `dashboard/staticwebapp.config.json`, so it shows a page the content
   security policy would partly refuse; `headroom serve` reads that file and sends what the
-  host will send. On 01 a plain file server hid a broken chart legend on the live site for
-  two weeks while every local check looked correct.
+  host will send. On the Intervention Targeting Engine a plain file server hid a broken
+  chart legend on the live site for two weeks while every local check looked correct.
 - `https://capacity.peterparker.ca` serves over HTTPS with no certificate warning.
 - The page's numbers match the README's tables. They come from the same checkpoints.
 - Open the browser console on the live page and confirm it is empty. A content security

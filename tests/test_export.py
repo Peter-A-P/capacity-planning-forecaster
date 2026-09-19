@@ -286,7 +286,7 @@ def test_every_kind_of_file_published_has_a_declared_content_type():
 @pytest.mark.skipif(not PAGE.exists(), reason="the dashboard has not been built")
 def test_the_page_carries_nothing_its_own_policy_would_refuse():
     # A page with an inline script or a style attribute needs 'unsafe-inline' in the policy,
-    # which is the whole value of having one. On project 01 a local file server sent no
+    # which is the whole value of having one. On a sister project a local file server sent no
     # headers at all and hid exactly this for two weeks, so it is asserted here.
     html = PAGE.read_text(encoding="utf-8")
     assert not re.search(r"<script(?![^>]*\ssrc=)", html), "an inline script"

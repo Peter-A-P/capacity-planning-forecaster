@@ -11,8 +11,8 @@ cost. This file is the working state, and it goes stale; the other three do not.
 
 ## Where the build is
 
-Started 2026-09-12, moved forward from the Jul 2027 slot (`PLAN.md` header, and the plan
-repository at rev. 5). Two-week build; this is day 7.
+Started 2026-09-12, brought forward from a mid-2027 slot (`PLAN.md` header). Two-week
+build.
 
 **307 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
@@ -56,7 +56,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 Every model named in `PLAN.md` section 1 is now built and scored, and so is the whole
 reconciliation. The first entries are here because the verdict on them is the point, not
 the code. What is genuinely not built is conformal on the reconciled forecasts, and the
-dashboard, which waits on project 01's static pattern.
+dashboard, which waits on the Intervention Targeting Engine's static pattern.
 
 - **N-HiTS: done, and it lost.** `docs/neural-verdict.md`. Monthly refits, 964 origins,
   scored on 53 to 963: CRPS minus ETS city +28.39 [+21.72, +40.03], borough +7.19, area
@@ -116,14 +116,15 @@ dashboard, which waits on project 01's static pattern.
   most of it the seasonal naive rerun and the nine conformal applications.
 - **Dashboard: built 2026-09-18, not yet published.** `headroom export` writes
   `dashboard/data/dashboard.json` and `forecast.json`; `dashboard/` is the static site, on
-  01's pattern (hand-written `index.html`, `style.css` and one plain `app.js` against
+  the Intervention Targeting Engine's pattern (hand-written `index.html`, `style.css` and one plain `app.js` against
   precomputed JSON, no framework and no web fonts). Both payloads are validated against a
   JSON Schema before they are written, and `tests/test_export.py` checks the built page as
   well as the payloads. `headroom serve` serves it with the headers and content types
   `dashboard/staticwebapp.config.json` declares. Four panels, as `PLAN.md` section 4 names
   them: the fan chart with a node picker, coverage through the shift with a window control,
   the reconciliation table, and the service-level slider driving the staffing table. Each
-  chart has a hover readout. It takes peterparker.ca's palette, type and 3px rule, on 01's
+  chart has a hover readout. It takes peterparker.ca's palette, type and 3px rule, on the
+  same
   pattern, with the two fonts copied into `dashboard/fonts/` because the policy allows no
   off-origin request.
   **What is left is publishing**, which is a separate decision because it provisions
@@ -287,7 +288,7 @@ excluding zero at every level, so ETS is what later models are paired against. M
 median is 10 to 15 percent worse than ETS's and its intervals are 27 percent narrower,
 because StatsForecast adds the seasonal forecast to its quantiles as a fixed shift with no
 seasonal uncertainty (read from the source; coverage 0.68 one day ahead, 0.85 at 14).
-Ranking by MAE gives the same order as CRPS, so Rule C candidate 2 is not supported by
+Ranking by MAE gives the same order as CRPS, so section 9's candidate 2 is not supported by
 these three models.
 
 The machine changed on 2026-09-13 (machine B in `docs/methods.md`: i5-10400F, 16 GB), and
@@ -437,7 +438,7 @@ tuned one. Table in `docs/methods.md`.
 
 ---
 
-## Rule C candidates, with the evidence so far
+## Candidate rejected approaches, with the evidence so far
 
 `PLAN.md` section 9 lists three. The evidence now points somewhere the plan did not
 anticipate, which is worth more than confirming it would have been.
