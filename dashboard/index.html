@@ -45,6 +45,7 @@
       </div>
     </div>
     <p class="hero-models" id="hero-models"></p>
+    <div class="visually-hidden" id="model-notes"></div>
     <p class="hero-note">
       <span id="hero-context">Nothing is modelled in your browser.</span> Every number was computed
       in advance by the backtest and is checkable in the repository, and every one carries a 95
@@ -205,7 +206,17 @@
       </table>
     </div>
 
-    <div class="assumption" id="models-note"></div>
+    <div class="assumption">
+      <p id="models-note"></p>
+      <p>
+        <strong>Compute is comparable within a kind of model, and only roughly across them.</strong>
+        It is the median time per forecast times the full schedule, on one desktop CPU. ETS,
+        Theta and MSTL were fitted three at a time and each is charged a third of the shared
+        run, which is why they read alike; AutoARIMA was run alone, so its figure is a whole
+        machine's time. Measured alone, AutoARIMA costs about five times ETS, not the nine the
+        chart suggests, and the repository's methods document has both runs.
+      </p>
+    </div>
   </section>
 
   <section class="section" id="reconciliation-panel">
@@ -274,8 +285,7 @@
       <li>
         <strong>Nothing here is live.</strong> Every number comes from one rolling-origin backtest
         over published data, and the repository's README carries the same numbers as tables,
-        including the statistical models this page does not draw and the two further windows
-        the pretrained model was scored on.
+        including the two further windows the pretrained model was scored on.
       </li>
       <li>
         <strong>Coverage is measured on one forecast, not on all of them.</strong> The three

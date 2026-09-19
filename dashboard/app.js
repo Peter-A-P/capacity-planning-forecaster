@@ -1,6 +1,6 @@
 /* The dashboard, drawn from two data files and nothing else.
  *
- * No framework and no charting library: the page draws four panels, and a library big enough
+ * No framework and no charting library: the page draws five panels, and a library big enough
  * to draw them is bigger than the measurements it would draw. Everything here is SVG built
  * with the DOM API, which also means the content security policy can forbid inline scripts
  * and styles outright rather than carrying an exception for a bundle.
@@ -95,6 +95,70 @@
   /* A model's label carries its own comma ("N-HiTS, refitted every 4 weeks"), and two of
      those inside a list make the sentence unreadable, so prose uses the name alone. */
   function shortName(name) { return name.split(", ")[0]; }
+
+  /* What each model is, for a reader who has not met it, keyed by the name prose uses. This
+     is description, not measurement: every number about a model is on the chart and in the
+     table, from the payload. A model the payload names and this does not is shown as plain
+     text rather than with a wrong note, and tests/test_export.py fails until one is written. */
+  var MODEL_NOTES = {
+    "Seasonal naive": "The baseline every other model is measured against. It forecasts each " +
+      "day as the same weekday one or two weeks earlier, and takes its range from the spread " +
+      "of its own past errors at that distance ahead. Nothing is fitted, and on demand with a " +
+      "strong weekly cycle it is harder to beat than it sounds.",
+    "ETS": "Exponential smoothing: a classical statistical model that tracks each series' " +
+      "level, trend and weekly pattern, weighting recent days most. It is fitted to each of " +
+      "the 37 series separately, with its form chosen automatically, and it is the " +
+      "forecaster the top of this page draws.",
+    "Theta": "A classical statistical method that takes out the weekly pattern, splits what " +
+      "is left into a long-run trend and short-run movement, forecasts each and puts them " +
+      "back together. It won the M3 forecasting competition and has been a standard " +
+      "benchmark since. Fitted to each series separately.",
+    "MSTL": "Splits each series into a weekly pattern, a yearly pattern and what is left, " +
+      "forecasts the remainder with exponential smoothing and adds the patterns back. The " +
+      "one statistical model here that sees the annual cycle as well as the weekly one.",
+    "AutoARIMA": "The classical ARIMA model, which forecasts a series from its own recent " +
+      "values and its own recent errors, with the model's orders searched automatically for " +
+      "each series at every forecast. That search is why it is by far the most expensive " +
+      "statistical model to fit.",
+    "LightGBM": "Gradient-boosted decision trees: one model trained across all 37 series at " +
+      "once, from each series' recent values and a calendar that includes public holidays. " +
+      "It forecasts a single middle value, so its range is conformal, built from its own " +
+      "past errors.",
+    "N-HiTS": "A deep neural network designed for forecasting, which reads each series at " +
+      "several time scales at once and combines what it sees. Trained on these 37 series and " +
+      "refitted every four weeks, it forecasts a full set of quantiles directly.",
+    "PatchTST": "A transformer, the architecture behind large language models, adapted to " +
+      "time series by cutting each series into short patches and reading them the way a " +
+      "language model reads words. Trained on these 37 series and refitted every thirteen " +
+      "weeks, it forecasts a full set of quantiles directly.",
+    "TimesFM": "Google Research's pretrained time-series foundation model, version 2.5 with " +
+      "200 million parameters, trained on a large public corpus of time series and used here " +
+      "zero-shot: nothing was fitted to this data. Its training data covers the pandemic " +
+      "years in other series, so it is judged only on forecasts made after that data ends."
+  };
+
+  var noteCount = 0;
+
+  /* A model's name with its description attached: a bubble on hover or focus for a reader
+     who can see it, and the same words as a description for one who hears the page. */
+  function term(name, notesHost) {
+    var note = MODEL_NOTES[name];
+    if (!note) { return document.createTextNode(name); }
+    var id = "model-note-" + (noteCount++);
+    notesHost.appendChild(el("span", { id: id }, note));
+    return el("span", {
+      "class": "term", tabindex: "0", "data-note": note, "aria-describedby": id
+    }, name);
+  }
+
+  function termList(names, notesHost) {
+    var out = document.createDocumentFragment();
+    names.forEach(function (name, i) {
+      if (i) { out.appendChild(document.createTextNode(i === names.length - 1 ? " and " : ", ")); }
+      out.appendChild(term(name, notesHost));
+    });
+    return out;
+  }
 
   /* Names, read out the way a sentence reads them. */
   function listing(items) {
@@ -819,9 +883,8 @@
         parts.slice(1).join(", "),
         (group.own ? row.origins + " origins, " : "") + duration(row.fit_seconds) +
           (group.own ? " to run" : " to fit")
-      ];
+      ].filter(function (text) { return text; });
       lines.forEach(function (text, j) {
-        if (!text) { return; }
         var label = svg("text", {
           "class": j === 0 ? "row-label" : "row-note",
           x: -13,
@@ -1183,14 +1246,20 @@
     var models = payload.models;
     var trained = models.rows.map(function (row) { return shortName(row.name); });
     var pretrained = models.own_windows.map(function (row) { return shortName(row.name); });
-    byId("hero-models").textContent =
-      "Trained and scored on every one of those forecasts: " + listing(trained) + "." +
-      (pretrained.length
-        ? " " + listing(pretrained) + " is pretrained, trained on none of this data, and is"
-          + " scored on its own clean window."
-        : "") +
-      " They are all on one chart further down, and the statistical models this page does not" +
-      " draw are in the repository's tables.";
+    var line = byId("hero-models");
+    var notes = byId("model-notes");
+    clear(line);
+    clear(notes);
+    function words(text) { line.appendChild(document.createTextNode(text)); }
+    words("Trained and scored on every one of those forecasts: ");
+    line.appendChild(termList(trained, notes));
+    words(".");
+    if (pretrained.length) {
+      words(" ");
+      line.appendChild(termList(pretrained, notes));
+      words(" is pretrained, trained on none of this data, and is scored on its own clean window.");
+    }
+    words(" Point at a name to read what it is; they are all on one chart further down.");
     byId("hero-context").textContent =
       payload.origins.count.toLocaleString() + " weekly forecasts of the next " +
       payload.origins.horizon_days + " days, " + payload.origins.first + " to " +

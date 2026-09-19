@@ -388,6 +388,19 @@ def test_the_exported_dashboard_file_still_satisfies_the_schema():
     ex.validate(ex.DASHBOARD, json.loads((DATA / ex.DASHBOARD).read_text(encoding="utf-8")))
 
 
+@pytest.mark.skipif(not (DATA / ex.DASHBOARD).exists(), reason="nothing exported yet")
+def test_every_model_the_page_names_has_a_description_on_it():
+    # The page describes each model in words it cannot read from the payload, so a model
+    # added to the export would otherwise appear as a bare name with nothing to explain it.
+    payload = json.loads((DATA / ex.DASHBOARD).read_text(encoding="utf-8"))
+    script = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+    block = script.split("var MODEL_NOTES = {", 1)[1].split("};", 1)[0]
+    described = set(re.findall(r'^\s{4}"([^"]+)":', block, flags=re.MULTILINE))
+    models = payload["models"]
+    named = {row["name"].split(", ")[0] for row in models["rows"] + models["own_windows"]}
+    assert named <= described, f"no description on the page for {sorted(named - described)}"
+
+
 @pytest.mark.skipif(not (DATA / ex.FORECAST).exists(), reason="nothing exported yet")
 def test_the_exported_forecast_file_still_satisfies_the_schema():
     payload = json.loads((DATA / ex.FORECAST).read_text(encoding="utf-8"))

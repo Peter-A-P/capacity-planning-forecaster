@@ -14,7 +14,7 @@ cost. This file is the working state, and it goes stale; the other three do not.
 Started 2026-09-12, brought forward from a mid-2027 slot (`PLAN.md` header). Two-week
 build.
 
-**312 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
+**313 tests, `ruff` and `mypy --strict` clean.** Run `uv run pytest -q`; add `--run-slow`
 for the tests that fit a real model, `--run-network` for the ones that fetch.
 
 | File | Tests | Covers |
@@ -35,7 +35,7 @@ for the tests that fit a real model, `--run-network` for the ones that fetch.
 | `test_cli.py` | 8 | `HEADROOM_OUT`, checkpoint names shared by `stats` and `score`, and the per-quantile pinball table (a model scored against itself has no skill at any quantile) |
 | `test_charts.py` | 10 | The trailing window, the refusals that stop a series being drawn against the wrong dates, and that a real PNG appears |
 | `test_report.py` | 42 | README markers (refused if missing, idempotent), interval formatting, worst window, and that a model which was run is never also listed as not built |
-| `test_export.py` | 23 | The dashboard payloads against their schema, `nan` never reaching JSON, an interval that does not contain its point refused, and the built page: every file it asks for is published, and it carries nothing its own content security policy would refuse |
+| `test_export.py` | 24 | The dashboard payloads against their schema, `nan` never reaching JSON, an interval that does not contain its point refused, and the built page: every file it asks for is published, and it carries nothing its own content security policy would refuse |
 
 ### Built and measured
 
@@ -144,8 +144,10 @@ genuinely not built is conformal on the reconciled forecasts.
   its clean window alone, for the reason `PLAN.md` section 2.7a gives; it is for the same
   reason not in the staffing table, which PatchTST did join. `inputs/decision.toml` gained
   `hours_per_unit_day`, which enters no arithmetic and exists so a cost in unit-days can
-  also be read as crew-hours. The export takes about seven minutes now that it scores six
-  models rather than one.
+  also be read as crew-hours. `--compare` added Theta, MSTL and AutoARIMA to the chart and
+  its table, not to the rota, so every model that was run is on the page; each name in the
+  hero carries a description on hover or focus. The export takes about ten minutes now that
+  it scores nine models rather than one.
   **What is left is publishing**, which is a separate decision because it provisions
   hosting: `docs/deploy.md` is the runbook, the Azure app and the Cloudflare record were
   created on 2026-09-18, and the deploy itself needs the deployment token, which lives

@@ -399,6 +399,13 @@ decisions in it are worth recording:
   window and its origin count in the payload rather than assumed by the page. It is for the
   same reason absent from the staffing table, whose rows are all priced on one set of
   origins.
+- **All four statistical models are on the chart, and only the best one is staffed.** The
+  first version drew ETS alone, because `--statistical` names the one model the fan chart
+  draws and MinT reconciles, and so AutoARIMA, the most expensive statistical model to fit,
+  vanished from the page. `headroom export --compare` puts Theta, MSTL and AutoARIMA on the
+  chart and in its table; they are not reconciled or staffed from, which keeps the rota the
+  README's. Each model's name in the hero also carries a short description of what it is,
+  and `tests/test_export.py` fails if the export names a model the page cannot describe.
 - **Skill is drawn as a percentage and tabled as a share.** The chart is read by someone
   deciding whether any of this is worth the compute; the table beside it is the README's
   number, unchanged.

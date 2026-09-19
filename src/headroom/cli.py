@@ -1875,6 +1875,10 @@ def export(
     statistical: Annotated[
         str, typer.Option(help="The statistical model the page draws and reconciles.")
     ] = "ETS",
+    compare: Annotated[
+        str,
+        typer.Option(help="Further statistical checkpoints, on the models chart only."),
+    ] = "Theta,MSTL,AutoARIMA",
     boosting: Annotated[
         str, typer.Option(help="The gradient-boosting checkpoint.")
     ] = "LightGBM",
@@ -1914,6 +1918,9 @@ def export(
     Args:
         statistical: The statistical model the fan chart draws and the reconciliation view
             reconciles. One model, not a list: the page shows one forecast at a time.
+        compare: Further statistical checkpoints. They are scored and put on the models
+            chart beside the rest, and neither reconciled nor staffed from, which keeps the
+            staffing table the README's: the best statistical model and its reconciliations.
         boosting: The gradient-boosting checkpoint, staffed from.
         neural: Neural checkpoints, staffed from.
         zero_shot: Pretrained checkpoints. They are drawn on their own window and never
@@ -2077,6 +2084,27 @@ def export(
         rows=rows,
     )
     del mint, variants, base
+
+    # The other statistical models, which cost real compute and belong on the chart, the
+    # most expensive of them especially. Scored only: the fan, the reconciliation and the
+    # rota follow the one statistical model named above.
+    for compared in _names(compare):
+        if compared == statistical:
+            continue
+        typer.echo(f"reading {compared}")
+        other = _complete_checkpoint(compared, step, origins, hierarchy.n_nodes)
+        compared_seconds = float(np.median(other.seconds)) * len(origins)
+        compared_scores = scored(compared, other.quantiles)
+        del other
+        model_rows.append(
+            ex.model_row(
+                name=compared,
+                kind="statistical",
+                fit_seconds=compared_seconds,
+                levels=_model_levels(compared_scores, naive, nominal_at),
+            )
+        )
+        del compared_scores
 
     for other_name in [*_names(boosting), *_names(neural)]:
         typer.echo(f"reading {other_name}")
