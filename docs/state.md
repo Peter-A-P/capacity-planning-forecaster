@@ -1,6 +1,6 @@
 # State of the build
 
-**Last updated: 2026-09-18.** Read this first if you are picking the project up. It says
+**Last updated: 2026-09-19.** Read this first if you are picking the project up. It says
 what exists, what has been measured, what decision is open, and what to do next.
 
 `PLAN.md` is the design and takes precedence. `docs/methods.md` has every measured number
@@ -123,7 +123,7 @@ genuinely not built is conformal on the reconciled forecasts.
   underneath, because coverage alone can be reached by widening; it is the picture of
   finding 1 below. The fan chart is ETS 14 days ahead through the shift. About 12 minutes,
   most of it the seasonal naive rerun and the nine conformal applications.
-- **Dashboard: built 2026-09-18, not yet published.** `headroom export` writes
+- **Dashboard: built 2026-09-18, live since 2026-09-18.** `headroom export` writes
   `dashboard/data/dashboard.json` and `forecast.json`; `dashboard/` is the static site, on
   the Intervention Targeting Engine's pattern (hand-written `index.html`, `style.css` and one plain `app.js` against
   precomputed JSON, no framework and no web fonts). Both payloads are validated against a
@@ -148,10 +148,9 @@ genuinely not built is conformal on the reconciled forecasts.
   its table, not to the rota, so every model that was run is on the page; each name in the
   hero carries a description on hover or focus. The export takes about ten minutes now that
   it scores nine models rather than one.
-  **What is left is publishing**, which is a separate decision because it provisions
-  hosting: `docs/deploy.md` is the runbook, the Azure app and the Cloudflare record were
-  created on 2026-09-18, and the deploy itself needs the deployment token, which lives
-  nowhere in this repository.
+  **Published**: the page is served at capacity.peterparker.ca. `docs/deploy.md` is the
+  runbook, the Azure app and the Cloudflare record were created on 2026-09-18, and each
+  deploy needs the deployment token, which lives nowhere in this repository.
 - **NHS England dataset.** Optional and first to drop (`PLAN.md` section 5).
 
 ---
