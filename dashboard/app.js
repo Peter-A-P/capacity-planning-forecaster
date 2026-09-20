@@ -692,7 +692,9 @@
   var BAR = 13;
   var BAR_GAP = 3;
   var GROUP_GAP = 18;
-  var OWN_GAP = 34;
+  /* The gap under the divider is wide enough for its label to sit on the line with clear
+     air above and below it, rather than crowding the row it separates. */
+  var OWN_GAP = 58;
   var MODELS_MARGIN = { top: 12, right: 68, bottom: 34, left: 190 };
 
   /* Decimals that show three significant figures, as headroom.report.tables.decimals_for
@@ -708,6 +710,26 @@
   function withInterval(estimate, places) {
     return decimals(estimate.point, places) + " [" + decimals(estimate.low, places) +
       ", " + decimals(estimate.high, places) + "]";
+  }
+
+  /* Cut the divider line away from behind its label. The width comes from the drawn text,
+     with a guess from the character count for the browsers and the moments where a text
+     element has no box yet, and it is measured again once the page's own font has loaded
+     because that changes the width. */
+  function clearDividers(plates, again) {
+    plates.forEach(function (item) {
+      var width = item.note.textContent.length * 6.9;
+      try {
+        var box = item.note.getBBox();
+        if (box && box.width > 1) { width = box.width; }
+      } catch (ignored) { /* a detached or hidden chart has no geometry to read */ }
+      var pad = 11;
+      item.plate.setAttribute("x", Number(item.note.getAttribute("x")) - width / 2 - pad);
+      item.plate.setAttribute("width", width + pad * 2);
+    });
+    if (!again && window.document.fonts && window.document.fonts.ready) {
+      window.document.fonts.ready.then(function () { clearDividers(plates, true); });
+    }
   }
 
   /* What the chart draws: every model except the baseline, which is the zero line itself,
@@ -862,19 +884,32 @@
       });
     }
 
+    var plates = [];
     groups.forEach(function (group, i) {
       var row = group.row;
       var top = tops[i];
       if (group.own && (i === 0 || !groups[i - 1].own)) {
         var at = top - OWN_GAP / 2;
+        var from = 8 - MODELS_MARGIN.left;
         plot.appendChild(svg("line", {
-          "class": "divider", x1: 8 - MODELS_MARGIN.left, x2: inner, y1: at, y2: at
+          "class": "divider", x1: from, x2: inner, y1: at, y2: at
         }));
+        /* The label sits on the line rather than above it, and knocks a hole in the line so
+           the two never overprint each other. The hole is measured once the chart is in the
+           document, because only then does the text have a width. */
+        var plate = svg("rect", {
+          "class": "divider-plate", x: from, y: at - 9, width: 0, height: 18
+        });
+        plot.appendChild(plate);
         var note = svg("text", {
-          "class": "divider-label", x: 8 - MODELS_MARGIN.left, y: at - 7
+          "class": "divider-label",
+          x: (from + inner) / 2,
+          y: at + 3.6,
+          "text-anchor": "middle"
         });
         note.textContent = "pretrained, on its own window: never pooled with the models above";
         plot.appendChild(note);
+        plates.push({ plate: plate, note: note });
       }
 
       var parts = row.name.split(", ");
@@ -941,6 +976,7 @@
     root.addEventListener("pointerleave", reset);
     reset();
     host.appendChild(root);
+    clearDividers(plates);
 
     legendInto(byId("models-legend"), names.map(function (name, j) {
       return { label: name, swatch: "sw-lv" + j + " solid" };

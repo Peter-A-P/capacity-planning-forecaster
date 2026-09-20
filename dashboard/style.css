@@ -443,7 +443,19 @@ figcaption { font-size: 0.83rem; color: var(--ink-faint); margin-top: 0.5rem; }
 .row-label { fill: var(--ink); font-size: 12px; font-weight: 600; }
 .row-note { fill: var(--ink-faint); font-size: 10.5px; }
 .divider { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 4 3; }
-.divider-label { fill: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* The divider's label sits on the line, and the plate is the page's own background painted
+   over the line behind it, so the two never overprint. It is a fill rather than a border:
+   the label is a break in the rule, not a box on top of it. */
+.divider-plate { fill: var(--paper); }
+
+.divider-label {
+  fill: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
 .legend { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.25rem 0 0.5rem; }
 
