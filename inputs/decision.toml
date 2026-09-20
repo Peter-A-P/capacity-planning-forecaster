@@ -2,7 +2,8 @@
 #
 # None of them comes from any emergency service, employer or published staffing standard.
 # They exist so the staffing arithmetic has something to run on; replace them with your
-# own and rerun. CLAUDE.md requires that they live here, in a table, and nowhere in code.
+# own and rerun. This project's rules require that they live here, in a table, and nowhere
+# in code.
 
 # Incidents one staffed unit can serve in a day, per dispatch area.
 demand_per_unit = 10.0

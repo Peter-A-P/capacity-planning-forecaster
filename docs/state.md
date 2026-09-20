@@ -495,7 +495,7 @@ anticipate, which is worth more than confirming it would have been.
 
 ## Watch out for
 
-- **The README tables are filled by `headroom report`, never by hand** (`CLAUDE.md`).
+- **The README tables are filled by `headroom report`, never by hand.**
   Everything between the `report:start` and `report:end` markers is overwritten on every
   run; edit the command, not the README.
 - **Every reported number carries a confidence interval.** `headroom.score.bootstrap`.

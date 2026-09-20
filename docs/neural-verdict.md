@@ -1,7 +1,7 @@
 # The neural verdict
 
-`CLAUDE.md`: written whichever way it falls. This is where the neural models did and did
-not earn their complexity. Every number is from `docs/methods.md`, which says how it was
+Written whichever way it falls, which is the rule this project set itself. This is where
+the neural models did and did not earn their complexity. Every number is from `docs/methods.md`, which says how it was
 produced; all comparisons are paired over the same 911 weekly origins (2009-01-05 to
 2026-06-15), with 95 percent block-bootstrap intervals.
 
