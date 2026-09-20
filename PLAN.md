@@ -1,4 +1,4 @@
-# Plan: Capacity Planning Forecaster
+# Plan: How Many Crews, and How Sure
 
 **Written:** 2026-09-07. **Status:** built; the dashboard is live.
 [docs/state.md](docs/state.md) is the working state.

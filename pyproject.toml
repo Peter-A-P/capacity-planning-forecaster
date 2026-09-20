@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "headroom"
 version = "0.1.0.dev0"
-description = "Capacity Planning Forecaster: hierarchical probabilistic demand forecasts with adaptive conformal intervals, reconciled and turned into a staffing number"
+description = "How Many Crews, and How Sure: hierarchical probabilistic demand forecasts with adaptive conformal intervals, reconciled and turned into a staffing number"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = "MIT"

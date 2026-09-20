@@ -1,6 +1,6 @@
 # Working notes for Claude Code
 
-This repository is the Capacity Planning Forecaster, package `headroom`: hierarchical
+This repository is How Many Crews, and How Sure, package `headroom`: hierarchical
 probabilistic demand forecasting with adaptive conformal intervals, MinT reconciliation,
 named neural forecasters against statistical baselines, and a newsvendor staffing layer.
 Build started 2026-09-12. The plan is in [PLAN.md](PLAN.md).

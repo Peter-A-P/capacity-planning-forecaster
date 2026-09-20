@@ -1,4 +1,4 @@
-"""Capacity Planning Forecaster.
+"""How Many Crews, and How Sure.
 
 Hierarchical probabilistic demand forecasting with adaptive conformal intervals,
 MinT reconciliation, and a newsvendor staffing layer. See PLAN.md.

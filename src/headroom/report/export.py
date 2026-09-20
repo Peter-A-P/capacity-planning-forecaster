@@ -672,7 +672,7 @@ def _model_row_schema(extra: dict[str, Any] | None = None) -> dict[str, Any]:
 SCHEMAS: Final[dict[str, dict[str, Any]]] = {
     DASHBOARD: {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "Capacity Planning Forecaster dashboard",
+        "title": "How Many Crews, and How Sure dashboard",
         "type": "object",
         "required": [
             "schema_version",
@@ -873,7 +873,7 @@ SCHEMAS: Final[dict[str, dict[str, Any]]] = {
     },
     FORECAST: {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "Capacity Planning Forecaster fan bands",
+        "title": "How Many Crews, and How Sure fan bands",
         "type": "object",
         "required": [
             "schema_version",

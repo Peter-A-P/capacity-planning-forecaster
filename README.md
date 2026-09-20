@@ -1,4 +1,4 @@
-# Capacity Planning Forecaster
+# How Many Crews, and How Sure
 
 Demand forecasts, emergency calls and emergency-department arrivals, with uncertainty
 ranges that actually hold when conditions shift, turned into a staffing number at a chosen
