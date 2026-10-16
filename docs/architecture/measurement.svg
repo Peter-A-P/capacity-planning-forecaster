@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1142" height="860" viewBox="0 0 1142 860" role="img" aria-label="Each model sees only the 1,095 days before each of 964 weekly origins, refits every fourth origin, forecasts 14 days of quantiles, and is scored by CRPS and pinball against actuals with a moving block bootstrap over origins; headroom report writes the README tables from the stored forecasts." font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#14201E"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#0E6E60"/></marker><marker id="arrow-signal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#A64C1C"/></marker><marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#5C6B67"/></marker></defs>
+<rect width="1142" height="860" fill="#FFFFFF"/>
+<text x="28" y="42" font-size="16" font-weight="700" fill="#14201E">How the headline table is produced: one backtest, every model, intervals that respect dependence</text>
+<path d="M 571.0 130.0 L 571.0 178.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 571.0 242.0 L 571.0 290.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 571.0 354.0 L 571.0 397.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 571.0 471.0 L 571.0 514.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 571.0 578.0 L 571.0 626.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 571.0 690.0 L 571.0 738.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 702.0 770.0 L 852.0 770.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<rect x="440.0" y="66.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="571.0" y="87.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">964 origins, weekly</text>
+<text x="571.0" y="103.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">2007-12-31 to 2026-06-15</text>
+<text x="571.0" y="120.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.backtest.origins</text>
+<rect x="440.0" y="178.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<rect x="440.0" y="178.0" width="5" height="64.0" rx="2" fill="#0E6E60"/>
+<text x="571.0" y="199.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">The slice handed to a model</text>
+<text x="571.0" y="215.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">panel[:, :origin + 1], nothing after</text>
+<text x="571.0" y="232.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">3-year trailing window; tested</text>
+<text x="159.0" y="206.0" font-size="13" font-weight="400" text-anchor="middle" fill="#5C6B67" font-style="italic">Refit every 4th origin</text>
+<text x="159.0" y="222.0" font-size="13" font-weight="400" text-anchor="middle" fill="#5C6B67" font-style="italic">the same schedule for every model</text>
+<rect x="440.0" y="290.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="571.0" y="311.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Each model</text>
+<text x="571.0" y="327.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">seasonal naive first, then the rest</text>
+<text x="571.0" y="344.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.models</text>
+<path d="M 440.0 404.0 a 131.0 7 0 0 1 262.0 0 L 702.0 464.0 a 131.0 7 0 0 1 -262.0 0 Z" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/><path d="M 440.0 404.0 a 131.0 7 0 0 0 262.0 0" fill="none" stroke="#14201E" stroke-width="1.1"/>
+<text x="571.0" y="427.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">14-day quantile forecasts</text>
+<text x="571.0" y="443.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">stored per model, origin and node</text>
+<text x="571.0" y="460.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">backtest/out</text>
+<rect x="440.0" y="514.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<rect x="440.0" y="514.0" width="5" height="64.0" rx="2" fill="#A64C1C"/>
+<text x="571.0" y="535.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">CRPS as a pinball integral</text>
+<text x="571.0" y="551.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">coverage, width, skill vs naive</text>
+<text x="571.0" y="568.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.score.crps, coverage</text>
+<rect x="440.0" y="626.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<rect x="440.0" y="626.0" width="5" height="64.0" rx="2" fill="#A64C1C"/>
+<text x="571.0" y="647.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Moving block bootstrap</text>
+<text x="571.0" y="663.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">over origins, 95% intervals</text>
+<text x="571.0" y="680.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.score.bootstrap</text>
+<text x="983.0" y="542.0" font-size="13" font-weight="400" text-anchor="middle" fill="#5C6B67" font-style="italic">TimesFM scored only after</text>
+<text x="983.0" y="558.0" font-size="13" font-weight="400" text-anchor="middle" fill="#5C6B67" font-style="italic">its pretraining data ends</text>
+<rect x="440.0" y="738.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="571.0" y="759.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">headroom report</text>
+<text x="571.0" y="775.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">writes the README tables</text>
+<text x="571.0" y="792.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.report.tables</text>
+<rect x="852.0" y="738.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="983.0" y="759.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Charts and the dashboard JSON</text>
+<text x="983.0" y="775.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">coverage through March 2020</text>
+<text x="983.0" y="792.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.report.charts, export</text>
+<rect x="532.7" y="144.0" width="76.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="571.0" y="156.0" font-size="12" text-anchor="middle" fill="#14201E">each origin</text>
+<rect x="529.7" y="256.0" width="82.6" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="571.0" y="268.0" font-size="12" text-anchor="middle" fill="#14201E">history only</text>
+<rect x="541.5" y="365.5" width="59.0" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="571.0" y="377.5" font-size="12" text-anchor="middle" fill="#14201E">forecast</text>
+<rect x="520.9" y="482.5" width="100.2" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="571.0" y="494.5" font-size="12" text-anchor="middle" fill="#14201E">against actuals</text>
+<rect x="515.0" y="592.0" width="112.0" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="571.0" y="604.0" font-size="12" text-anchor="middle" fill="#14201E">per-origin scores</text>
+<rect x="485.6" y="704.0" width="170.8" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="571.0" y="716.0" font-size="12" text-anchor="middle" fill="#14201E">mean and interval per model</text>
+<rect x="712.2" y="760.0" width="129.6" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="777.0" y="772.0" font-size="12" text-anchor="middle" fill="#14201E">the same checkpoints</text>
+<rect x="28" y="824" width="26" height="16" rx="3" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<text x="62" y="836" font-size="11" fill="#5C6B67">the guard against leakage</text>
+<rect x="222.75" y="824" width="26" height="16" rx="3" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<text x="256.75" y="836" font-size="11" fill="#5C6B67">the score</text>
+<path d="M 331.3 831.0 a 13.0 7 0 0 1 26.0 0 L 357.3 833.0 a 13.0 7 0 0 1 -26.0 0 Z" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/><path d="M 331.3 831.0 a 13.0 7 0 0 0 26.0 0" fill="none" stroke="#14201E" stroke-width="1.1"/>
+<text x="365.26" y="836" font-size="11" fill="#5C6B67">data at rest</text>
+</svg>

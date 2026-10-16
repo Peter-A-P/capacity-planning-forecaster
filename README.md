@@ -251,7 +251,9 @@ compared with split conformal through the March 2020 shift. MinT reconciliation 
 levels sum, with a probabilistic reconciliation so the quantiles stay coherent. A
 newsvendor decision layer turns the reconciled distribution into staffing at a service
 level and realises each method's cost against actual demand. A static dashboard shows the
-fan charts, the coverage chart and a service-level slider.
+fan charts, the coverage chart and a service-level slider. Three architecture diagrams, the system, how
+the headline table is produced and the path from a forecast to crews on shift, are in
+[docs/architecture.md](docs/architecture.md).
 
 ## What this reuses
 
