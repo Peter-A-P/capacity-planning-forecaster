@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1158" height="872" viewBox="0 0 1158 872" role="img" aria-label="Public emergency dispatch incidents are aggregated to a daily hierarchy, every model is run through one rolling-origin backtest and scored by CRPS with block-bootstrap intervals, conformal intervals and MinT reconciliation wrap the forecasts, a newsvendor layer prices them into crews, and the report exports the same numbers to a static dashboard; all of it on a CPU." font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#14201E"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#0E6E60"/></marker><marker id="arrow-signal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#A64C1C"/></marker><marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#5C6B67"/></marker></defs>
+<rect width="1158" height="872" fill="#FFFFFF"/>
+<text x="28" y="42" font-size="16" font-weight="700" fill="#14201E">The system: twenty-one years of dispatch calls to a rota, with the range that held</text>
+<path d="M 165.0 130.0 L 165.0 175.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 165.0 249.0 L 165.0 294.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 302.0 326.0 L 442.0 326.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 579.0 366.0 L 579.0 403.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 716.0 440.0 L 856.0 440.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 579.0 477.0 L 579.0 522.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 579.0 586.0 L 579.0 636.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 579.0 700.0 L 579.0 750.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 993.0 472.0 L 993.0 548.0 Q 993.0 554.0 999.0 554.0 L 1032.7 554.0 Q 1038.7 554.0 1038.7 560.0 L 1038.7 636.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 716.0 554.0 L 941.3 554.0 Q 947.3 554.0 947.3 560.0 L 947.3 636.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 716.0 782.0 L 780.0 782.0 Q 786.0 782.0 786.0 776.0 L 786.0 674.0 Q 786.0 668.0 792.0 668.0 L 856.0 668.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 993.0 700.0 L 993.0 750.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<rect x="28.0" y="66.0" width="274.0" height="64.0" rx="4" fill="#F2F4F3" stroke="#5C6B67" stroke-width="1.1" stroke-dasharray="5 3"/>
+<text x="165.0" y="87.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">NYC EMS dispatch incidents</text>
+<text x="165.0" y="103.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">29,977,935, 2005 to 2026, open data</text>
+<text x="165.0" y="120.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.data.nyc_ems</text>
+<path d="M 28.0 182.0 a 137.0 7 0 0 1 274.0 0 L 302.0 242.0 a 137.0 7 0 0 1 -274.0 0 Z" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/><path d="M 28.0 182.0 a 137.0 7 0 0 0 274.0 0" fill="none" stroke="#14201E" stroke-width="1.1"/>
+<text x="165.0" y="205.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Daily panel on a hierarchy</text>
+<text x="165.0" y="221.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">city, 5 boroughs, 31 areas; 37 nodes</text>
+<text x="165.0" y="238.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.hierarchy, data.checks</text>
+<rect x="28.0" y="294.0" width="274.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<rect x="28.0" y="294.0" width="5" height="64.0" rx="2" fill="#0E6E60"/>
+<text x="165.0" y="315.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Rolling-origin backtest</text>
+<text x="165.0" y="331.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">964 weekly origins, 14-day horizon</text>
+<text x="165.0" y="348.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.backtest</text>
+<rect x="442.0" y="286.0" width="274.0" height="80.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="579.0" y="307.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Nine models, quantile forecasts</text>
+<text x="579.0" y="323.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">naive, statistical, LightGBM, N-HiTS,</text>
+<text x="579.0" y="339.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">PatchTST, TimesFM zero-shot</text>
+<text x="579.0" y="356.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.models</text>
+<path d="M 442.0 410.0 a 137.0 7 0 0 1 274.0 0 L 716.0 470.0 a 137.0 7 0 0 1 -274.0 0 Z" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/><path d="M 442.0 410.0 a 137.0 7 0 0 0 274.0 0" fill="none" stroke="#14201E" stroke-width="1.1"/>
+<text x="579.0" y="433.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Forecast store</text>
+<text x="579.0" y="449.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">every quantile at every origin</text>
+<text x="579.0" y="466.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">backtest/out, backtest.store</text>
+<rect x="856.0" y="408.0" width="274.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<rect x="856.0" y="408.0" width="5" height="64.0" rx="2" fill="#A64C1C"/>
+<text x="993.0" y="429.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Scoring</text>
+<text x="993.0" y="445.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">CRPS, pinball, coverage, bootstrap</text>
+<text x="993.0" y="462.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.score</text>
+<rect x="442.0" y="522.0" width="274.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<rect x="442.0" y="522.0" width="5" height="64.0" rx="2" fill="#0E6E60"/>
+<text x="579.0" y="543.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Conformal intervals</text>
+<text x="579.0" y="559.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">split, ACI, AgACI</text>
+<text x="579.0" y="576.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.conformal</text>
+<rect x="442.0" y="636.0" width="274.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="579.0" y="657.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Reconciliation</text>
+<text x="579.0" y="673.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">MinT, coherent quantiles</text>
+<text x="579.0" y="690.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.reconcile</text>
+<rect x="442.0" y="750.0" width="274.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<rect x="442.0" y="750.0" width="5" height="64.0" rx="2" fill="#0E6E60"/>
+<text x="579.0" y="771.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Decision layer</text>
+<text x="579.0" y="787.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">newsvendor: crews at a service level</text>
+<text x="579.0" y="804.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.decide, inputs/decision.toml</text>
+<rect x="856.0" y="636.0" width="274.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<rect x="856.0" y="636.0" width="5" height="64.0" rx="2" fill="#A64C1C"/>
+<text x="993.0" y="657.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Report and export</text>
+<text x="993.0" y="673.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">README tables, charts, dashboard JSON</text>
+<text x="993.0" y="690.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.report</text>
+<rect x="856.0" y="750.0" width="274.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="993.0" y="771.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">capacity.peterparker.ca</text>
+<text x="993.0" y="787.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Azure Static Web Apps, no framework</text>
+<text x="993.0" y="804.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">dashboard/</text>
+<rect x="59.3" y="142.5" width="211.4" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="165.0" y="154.5" font-size="12" text-anchor="middle" fill="#14201E">aggregated, 7,851 days, none missing</text>
+<rect x="84.3" y="261.5" width="161.4" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="165.0" y="273.5" font-size="12" text-anchor="middle" fill="#14201E">history up to each origin only</text>
+<rect x="338.3" y="316.0" width="67.4" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="372.0" y="328.0" font-size="12" text-anchor="middle" fill="#14201E">fit, forecast</text>
+<rect x="551.0" y="374.5" width="56.0" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="579.0" y="386.5" font-size="12" text-anchor="middle" fill="#14201E">quantiles</text>
+<rect x="741.6" y="430.0" width="88.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="786.0" y="442.0" font-size="12" text-anchor="middle" fill="#14201E">against actuals</text>
+<rect x="551.0" y="489.5" width="56.0" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="579.0" y="501.5" font-size="12" text-anchor="middle" fill="#14201E">residuals</text>
+<rect x="524.6" y="601.0" width="108.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="579.0" y="613.0" font-size="12" text-anchor="middle" fill="#14201E">calibrated intervals</text>
+<rect x="520.6" y="715.0" width="116.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="579.0" y="727.0" font-size="12" text-anchor="middle" fill="#14201E">coherent distribution</text>
+<rect x="942.7" y="503.0" width="100.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="993.0" y="515.0" font-size="12" text-anchor="middle" fill="#14201E">skill with intervals</text>
+<rect x="786.3" y="544.0" width="90.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="831.7" y="556.0" font-size="12" text-anchor="middle" fill="#14201E">coverage held?</text>
+<rect x="723.0" y="715.0" width="126.1" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="786.0" y="727.0" font-size="12" text-anchor="middle" fill="#14201E">cost against an oracle</text>
+<rect x="900.0" y="715.0" width="186.1" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="993.0" y="727.0" font-size="12" text-anchor="middle" fill="#14201E">two JSON files, schema-checked</text>
+<rect x="28" y="836" width="26" height="16" rx="3" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<text x="62" y="848" font-size="11" fill="#5C6B67">built here</text>
+<rect x="141.9" y="836" width="26" height="16" rx="3" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<text x="175.9" y="848" font-size="11" fill="#5C6B67">the measurement</text>
+<rect x="282.75" y="836" width="26" height="16" rx="3" fill="#F2F4F3" stroke="#5C6B67" stroke-dasharray="4 3"/>
+<text x="316.75" y="848" font-size="11" fill="#5C6B67">public data</text>
+<path d="M 402.0 843.0 a 13.0 7 0 0 1 26.0 0 L 428.0 845.0 a 13.0 7 0 0 1 -26.0 0 Z" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/><path d="M 402.0 843.0 a 13.0 7 0 0 0 26.0 0" fill="none" stroke="#14201E" stroke-width="1.1"/>
+<text x="436.03999999999996" y="848" font-size="11" fill="#5C6B67">data at rest</text>
+</svg>

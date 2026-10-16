@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1122" height="860" viewBox="0 0 1122 860" role="img" aria-label="A model&#x27;s quantiles are wrapped by adaptive conformal intervals so coverage holds through a shift, reconciled across the hierarchy so areas sum to the city, read at a service level, and priced by a newsvendor rule against stated costs into crews; the realised cost is compared with an oracle that knew demand." font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#14201E"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#0E6E60"/></marker><marker id="arrow-signal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#A64C1C"/></marker><marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9 z" fill="#5C6B67"/></marker></defs>
+<rect width="1122" height="860" fill="#FFFFFF"/>
+<text x="28" y="42" font-size="16" font-weight="700" fill="#14201E">From a forecast distribution to crews on shift</text>
+<path d="M 561.0 135.0 L 561.0 178.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 290.0 210.0 L 430.0 210.0" fill="none" stroke="#14201E" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<path d="M 561.0 242.0 L 561.0 290.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 561.0 354.0 L 561.0 402.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 561.0 466.0 L 561.0 514.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 832.0 546.0 L 692.0 546.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 561.0 578.0 L 561.0 626.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 561.0 690.0 L 561.0 738.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 692.0 770.0 L 832.0 770.0" fill="none" stroke="#14201E" stroke-width="1.4" marker-end="url(#arrow)"/>
+<path d="M 430.0 68.0 a 131.0 7 0 0 1 262.0 0 L 692.0 128.0 a 131.0 7 0 0 1 -262.0 0 Z" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/><path d="M 430.0 68.0 a 131.0 7 0 0 0 262.0 0" fill="none" stroke="#14201E" stroke-width="1.1"/>
+<text x="561.0" y="91.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">A model&#x27;s quantile forecast</text>
+<text x="561.0" y="107.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">14 days ahead, each of 37 nodes</text>
+<text x="561.0" y="124.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">backtest/out</text>
+<rect x="430.0" y="178.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<rect x="430.0" y="178.0" width="5" height="64.0" rx="2" fill="#0E6E60"/>
+<text x="561.0" y="199.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Adaptive conformal interval</text>
+<text x="561.0" y="215.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">coverage on average through a shift</text>
+<text x="561.0" y="232.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.conformal.aci, agaci</text>
+<rect x="28.0" y="178.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="159.0" y="199.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Split conformal, for comparison</text>
+<text x="159.0" y="215.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">under-covers after March 2020</text>
+<text x="159.0" y="232.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.conformal.split</text>
+<rect x="430.0" y="290.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<rect x="430.0" y="290.0" width="5" height="64.0" rx="2" fill="#0E6E60"/>
+<text x="561.0" y="311.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">MinT reconciliation</text>
+<text x="561.0" y="327.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">areas sum to boroughs sum to the city</text>
+<text x="561.0" y="344.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.reconcile.mint, paths</text>
+<rect x="430.0" y="402.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="561.0" y="430.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">A service level</text>
+<text x="561.0" y="446.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">0.80, 0.90 or 0.95 of forecast demand</text>
+<path d="M 832.0 516.0 a 131.0 7 0 0 1 262.0 0 L 1094.0 576.0 a 131.0 7 0 0 1 -262.0 0 Z" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/><path d="M 832.0 516.0 a 131.0 7 0 0 0 262.0 0" fill="none" stroke="#14201E" stroke-width="1.1"/>
+<text x="963.0" y="539.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">The decision inputs, illustrative</text>
+<text x="963.0" y="555.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">demand per unit, cost over, cost under</text>
+<text x="963.0" y="572.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">inputs/decision.toml</text>
+<rect x="430.0" y="514.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<rect x="430.0" y="514.0" width="5" height="64.0" rx="2" fill="#0E6E60"/>
+<text x="561.0" y="535.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Newsvendor rule</text>
+<text x="561.0" y="551.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">crews that minimise expected cost</text>
+<text x="561.0" y="568.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.decide.newsvendor</text>
+<rect x="430.0" y="626.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<rect x="430.0" y="626.0" width="5" height="64.0" rx="2" fill="#A64C1C"/>
+<text x="561.0" y="662.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Crews on shift per area, per day</text>
+<rect x="430.0" y="738.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<rect x="430.0" y="738.0" width="5" height="64.0" rx="2" fill="#A64C1C"/>
+<text x="561.0" y="759.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">Realised cost against an oracle</text>
+<text x="561.0" y="775.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">that knew the demand</text>
+<text x="561.0" y="792.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">headroom.decide</text>
+<rect x="832.0" y="738.0" width="262.0" height="64.0" rx="4" fill="#FFFFFF" stroke="#14201E" stroke-width="1.1"/>
+<text x="963.0" y="759.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">The dashboard slider</text>
+<text x="963.0" y="775.0" font-size="13" font-weight="500" text-anchor="middle" fill="#14201E">re-prices the rota at each level</text>
+<text x="963.0" y="792.0" font-size="11" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace" text-anchor="middle" fill="#5C6B67">dashboard/app.js</text>
+<rect x="495.6" y="146.5" width="130.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="561.0" y="158.5" font-size="12" text-anchor="middle" fill="#14201E">quantiles and residuals</text>
+<rect x="314.6" y="200.0" width="90.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="360.0" y="212.0" font-size="12" text-anchor="middle" fill="#5C6B67">the comparison</text>
+<rect x="505.3" y="256.0" width="111.4" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="561.0" y="268.0" font-size="12" text-anchor="middle" fill="#14201E">calibrated per node</text>
+<rect x="507.6" y="368.0" width="106.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="561.0" y="380.0" font-size="12" text-anchor="middle" fill="#14201E">coherent quantiles</text>
+<rect x="501.0" y="480.0" width="120.1" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="561.0" y="492.0" font-size="12" text-anchor="middle" fill="#14201E">a quantile of demand</text>
+<rect x="743.7" y="536.0" width="36.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="762.0" y="548.0" font-size="12" text-anchor="middle" fill="#14201E">costs</text>
+<rect x="473.6" y="592.0" width="174.7" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="561.0" y="604.0" font-size="12" text-anchor="middle" fill="#14201E">ceil(demand / demand per unit)</text>
+<rect x="511.0" y="704.0" width="100.0" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="561.0" y="716.0" font-size="12" text-anchor="middle" fill="#14201E">paid, idle or short</text>
+<rect x="711.0" y="760.0" width="102.1" height="20.0" rx="3" fill="#FFFFFF"/>
+<text x="762.0" y="772.0" font-size="12" text-anchor="middle" fill="#14201E">cost at each level</text>
+<rect x="28" y="824" width="26" height="16" rx="3" fill="#FFFFFF" stroke="#0E6E60" stroke-width="1.6"/>
+<text x="62" y="836" font-size="11" fill="#5C6B67">built here</text>
+<rect x="141.9" y="824" width="26" height="16" rx="3" fill="#FFFFFF" stroke="#A64C1C" stroke-width="1.6"/>
+<text x="175.9" y="836" font-size="11" fill="#5C6B67">what a planner reads</text>
+<path d="M 309.70000000000005 832 L 337.70000000000005 832" stroke="#14201E" stroke-width="1.4" fill="none" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="345.70000000000005" y="836" font-size="11" fill="#5C6B67">the comparison</text>
+</svg>
