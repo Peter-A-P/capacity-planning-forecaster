@@ -264,10 +264,16 @@ with no framework and no off-origin request.
 
 ## How this was built
 
-Design, methodology, evaluation choices and judgement are Peter Parker's, including years
-of health-sector utilisation forecasting. AI coding assistants (Claude Code) were used for
-implementation and drafting, under review at every step. Every number in the results tables
-is reproducible from this repository with one command.
+The design, the methods, the evaluation and the judgement calls are mine, and they draw on
+years of forecasting health-sector utilisation. Two show in the results. I gave the neural
+forecasters a full, fair run and then left them out, because the numbers said so. And I wrote
+the conformal intervals myself rather than take them from a library, because a forecast's
+error is not known until its date arrives, and an interval that assumes otherwise quietly uses
+the future.
+
+I used AI coding assistants (Claude Code) for implementation and drafting, and reviewed the
+work at every step. Every number in the results tables is reproducible from this repository
+with one command.
 
 ## Licence
 
