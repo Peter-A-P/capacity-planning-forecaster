@@ -15,6 +15,8 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="How many crews, and how sure?">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -30,8 +32,8 @@
     <a href="#fan-panel">The forecast</a>
     <a href="#coverage-panel">The promise</a>
     <a href="#models-panel">Every model</a>
-    <a href="#reconciliation-panel">Adding up</a>
     <a href="#staffing-panel">The rota</a>
+    <a href="#refuted">What did not work</a>
     <a href="#honesty">Limits</a>
     <a href="architecture.html">How it's built</a>
   </div>
@@ -39,42 +41,60 @@
 <main>
 
   <header class="hero">
-    <p class="eyebrow">Measured results, reproducible from one command</p>
-    <h1>How many crews to put on shift, <span class="hl">and how sure can you be?</span> Seventeen years of forecasts, scored against what happened.</h1>
+    <p class="eyebrow">Seventeen years of forecasts, scored against what happened</p>
+    <h1>How many crews to put on shift, <span class="hl">and how sure can you be?</span></h1>
     <p class="lead">
-      Emergency calls, arrivals, orders. A forecast that says "about 3,900 a day" is not a plan;
-      a forecast that says "3,600 to 4,200, and that range has held nine times in ten for
-      seventeen years" is. This page is the second claim, measured: 911 weekly forecasts of the
-      next fortnight, scored against what actually happened, and then turned into a number of
-      crews to put on shift. <strong>It includes the fortnight where the range broke.</strong>
+      Emergency calls, arrivals, orders. "About 3,900 a day" is hard to staff to. "3,600 to
+      4,200, and that range has held nine times in ten for seventeen years" is something a
+      manager can plan around. This page measures the second kind of claim: 911 weekly forecasts
+      of the next fortnight, scored against what actually happened, and then turned into a number
+      of crews to put on shift. <strong>It includes the fortnight where the range broke.</strong>
     </p>
+    <p class="hero-cta"><a class="button" href="#coverage-panel">See the month the range broke</a></p>
     <div class="hero-points">
       <div class="point good">
-        <span class="point-figure up" id="hero-coverage">&mdash;</span>
+        <span class="point-figure up" id="hero-coverage">...</span>
         <span class="point-unit" id="hero-coverage-unit"></span>
         <span class="point-label">a 90 percent interval should hold 9 times in 10, and over 17 years it does</span>
       </div>
       <div class="point">
-        <span class="point-figure" id="hero-worst">&mdash;</span>
+        <span class="point-figure" id="hero-worst">...</span>
         <span class="point-unit" id="hero-worst-unit"></span>
         <span class="point-label">the same interval, in its worst three months: March 2020, the Covid pandemic</span>
       </div>
       <div class="point violet">
-        <span class="point-figure up" id="hero-saving">&mdash;</span>
+        <span class="point-figure up" id="hero-saving">...</span>
         <span class="point-unit" id="hero-saving-unit"></span>
         <span class="point-extra" id="hero-saving-worth"></span>
-        <span class="point-label">what forecasting the rota saves against last-week's-demand staffing</span>
+        <span class="point-label">what forecasting the rota saves against staffing from last week's demand</span>
       </div>
     </div>
     <p class="hero-models" id="hero-models"></p>
     <div class="visually-hidden" id="model-notes"></div>
     <p class="hero-note">
       <span id="hero-context">Nothing is modelled in your browser.</span> Every number was computed
-      in advance by the backtest and is checkable in the repository, and every one carries a 95
-      percent confidence interval, because a number without one is an opinion.
+      in advance by the backtest and can be checked in
+      <a href="https://github.com/Peter-A-P/capacity-planning-forecaster">the public repository</a>,
+      and every one carries a 95 percent confidence interval there.
       <a href="architecture.html">See how it's built</a>, in three diagrams.
     </p>
   </header>
+
+  <nav class="toc" aria-label="On this page">
+    <p class="eyebrow">On this page</p>
+    <ol>
+      <li><a href="#picture">The whole idea in one picture</a></li>
+      <li><a href="#fan-panel">What a forecast with a range looks like</a></li>
+      <li><a href="#coverage-panel">The promise, and the month it broke</a></li>
+      <li><a href="#models-panel">Every model that was trained, on one chart</a></li>
+      <li><a href="#reconciliation-panel">Do the parts add up to the whole?</a></li>
+      <li><a href="#staffing-panel">The forecast as a rota, priced</a></li>
+      <li><a href="#refuted">What the data proved wrong</a></li>
+      <li><a href="#honesty">What this page does not show</a></li>
+      <li><a href="#engineering">How it is engineered</a></li>
+      <li><a href="#built">How this was built</a></li>
+    </ol>
+  </nav>
 
   <noscript>
     <p class="warning">
@@ -84,6 +104,40 @@
   </noscript>
 
   <p class="warning" id="failure" hidden></p>
+
+  <div class="part">
+    <p class="eyebrow">How it works</p>
+    <h2 class="part-title">From a city's emergency calls to crews on shift</h2>
+    <p class="lead">
+      The rest of this page is the method and its evidence, in the order it happens. Each part
+      starts in plain language, with a picture. Where there is more to say for someone who builds
+      models for a living, it is folded away under <strong>For the technical reader</strong>, so
+      you can skip it if you only want the idea.
+    </p>
+  </div>
+
+  <section class="section" id="picture">
+    <h2>The whole idea in one picture</h2>
+    <p class="section-lead">
+      Six steps. The order matters: every forecast is made from the past alone and scored against
+      a fortnight that had not happened when it was made.
+    </p>
+    <ol class="pipeline steps-6">
+      <li><span class="step">1</span><strong>Count</strong><span>Daily emergency incidents for the city, 5 boroughs and 31 dispatch areas.</span></li>
+      <li><span class="step">2</span><strong>Replay</strong><span>One forecast a week since 2009, each seeing only the history before it.</span></li>
+      <li><span class="step">3</span><strong>Forecast</strong><span>Nine models, each giving a full range for the next 14 days.</span></li>
+      <li class="key"><span class="step">4</span><strong>Score</strong><span>Against what happened, with an interval on every score.</span></li>
+      <li><span class="step">5</span><strong>Reconcile</strong><span>Make the areas add up to the boroughs and the boroughs to the city.</span></li>
+      <li><span class="step">6</span><strong>Staff</strong><span>Price the range into crews at a chosen service level.</span></li>
+    </ol>
+    <div class="verdict">
+      <p>
+        <strong>Every forecast is scored against a fortnight that had not happened when it was
+        made.</strong> That is what lets this page show the month the ranges broke, which a
+        whole-period average would hide.
+      </p>
+    </div>
+  </section>
 
   <section class="section" id="fan-panel">
     <h2>What a forecast with a range actually looks like</h2>
@@ -184,10 +238,10 @@
         one window, and none was delivered.
       </p>
       <p>
-        That is not a failure of the implementation, and the chart is the honest way to show it.
-        A whole-period average would report 0.90 and say nothing at all about the month that
-        mattered. The remedy this project does not attempt is named in the repository's methods
-        document rather than quietly tried.
+        The implementation is working as designed; the guarantee is weaker than it sounds. A
+        whole-period average would report 0.90 and say nothing at all about the month that
+        mattered. The repository's methods document names the remedy, which this project does not
+        attempt.
       </p>
     </details>
   </section>
@@ -205,8 +259,8 @@
 
     <div class="verdict">
       <p>
-        <strong>The pretrained model is the one that did not lose, and the honest version of
-        that is complicated.</strong> TimesFM was trained on none of this data and forecasts it
+        <strong>The pretrained model is the one that did not lose, with one large
+        caveat.</strong> TimesFM was trained on none of this data and forecasts it
         zero-shot, with nothing fitted here at all. Its weights postdate most of these origins,
         though, and its training corpus contains the 2020 period in other series, so a forecast
         it makes of March 2020 is not the same kind of claim as every other bar above. It is
@@ -223,11 +277,14 @@
       </p>
     </div>
 
-    <div class="table-wrap">
-      <table id="models-table" class="tight">
-        <caption id="models-table-caption"></caption>
-      </table>
-    </div>
+    <details class="disclose">
+      <summary>For the technical reader: every model at every level, with coverage and width</summary>
+      <div class="table-wrap">
+        <table id="models-table" class="tight">
+          <caption id="models-table-caption"></caption>
+        </table>
+      </div>
+    </details>
 
     <div class="assumption">
       <p id="models-note"></p>
@@ -245,6 +302,16 @@
   <section class="section" id="reconciliation-panel">
     <h2>Do the parts add up to the whole?</h2>
     <p class="section-lead" id="reconciliation-lede"></p>
+
+    <figure class="chart-figure">
+      <div id="reconciliation-chart" class="chart wide-chart"></div>
+      <p class="readout" id="reconciliation-readout"></p>
+      <div class="legend" id="reconciliation-legend"></div>
+      <figcaption>
+        Below zero is better: reconciling lowered the forecast's loss at that level. Whiskers are
+        95 percent moving-block bootstrap intervals over forecast origins.
+      </figcaption>
+    </figure>
 
     <div class="table-wrap">
       <table id="reconciliation-table">
@@ -274,6 +341,15 @@
 
     <section class="headline" id="staffing-headline" aria-live="polite"></section>
 
+    <figure class="chart-figure">
+      <div id="staffing-chart" class="chart wide-chart"></div>
+      <p class="readout" id="staffing-readout"></p>
+      <figcaption>
+        The shorter the bar, the closer the rota came to one that knew each day's demand.
+        Staffing from last week's demand is the grey bar; the slider above moves every bar.
+      </figcaption>
+    </figure>
+
     <div class="table-wrap">
       <table id="staffing-table">
         <caption>
@@ -297,7 +373,40 @@
         number of unit-days saved and the crew-hours beside it are those unit-days at the hours
         the inputs table gives them. Nothing on this page invents a rate of pay. Put your own on
         the crew-hours and the figure is yours; change the two costs and every number in the table
-        moves, which is the point of their being a table.
+        moves.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="refuted">
+    <h2>What the data proved wrong</h2>
+    <p class="section-lead">
+      Four things were built, measured and not adopted. Each was a real cost, and the
+      measurements are why it was dropped.
+    </p>
+    <div class="cards">
+      <article class="card-note">
+        <h3>N-HiTS, the plan's neural forecaster</h3>
+        <p>Beaten at every level. Its own 90 percent ranges covered 58 to 68 percent of outcomes, after 18.3 hours of fitting against ETS's 1.5.</p>
+      </article>
+      <article class="card-note">
+        <h3>PatchTST</h3>
+        <p>The best calibrated model here, and it ties ETS at the city and the boroughs. It loses at the dispatch areas, at about seventeen times the cost.</p>
+      </article>
+      <article class="card-note">
+        <h3>AutoARIMA</h3>
+        <p>Five times ETS's cost to finish third of the four statistical models.</p>
+      </article>
+      <article class="card-note">
+        <h3>A GPU</h3>
+        <p>A GTX 1650 gave no speedup on these fits, so every published time is a CPU time.</p>
+      </article>
+    </div>
+    <div class="assumption">
+      <p>
+        <strong>The full verdict on the neural models</strong>, including the one model that did
+        not lose, is in
+        <a href="https://github.com/Peter-A-P/capacity-planning-forecaster/blob/main/docs/neural-verdict.md">docs/neural-verdict.md</a>.
       </p>
     </div>
   </section>
@@ -327,13 +436,87 @@
     </ul>
   </section>
 
+  <section class="section" id="engineering">
+    <h2>How it is engineered</h2>
+    <p class="section-lead">
+      The code is typed and tested, the backtest is checkpointed, and one command writes the
+      README's tables and this page's data from the same stored forecasts.
+    </p>
+    <div class="headline">
+      <div class="stat"><span class="figure">278</span><span class="caption">automated tests, including one that checks no model sees a day after its forecast date</span></div>
+      <div class="stat"><span class="figure">9,600</span><span class="caption">lines of typed Python in the package, strict type checking and linting clean in CI</span></div>
+      <div class="stat"><span class="figure">911</span><span class="caption">weekly forecasts per model, each for 37 series and 14 days ahead</span></div>
+      <div class="stat"><span class="figure">1</span><span class="caption">CPU for every fit, after a GPU was tried and gave no speedup</span></div>
+    </div>
+    <ul class="chips" aria-label="Tools and techniques">
+      <li>Python 3.13</li><li>Polars</li><li>NumPy</li><li>SciPy</li><li>StatsForecast</li>
+      <li>LightGBM</li><li>NeuralForecast</li><li>N-HiTS</li><li>PatchTST</li><li>TimesFM</li>
+      <li>HierarchicalForecast</li><li>MinT reconciliation</li><li>Adaptive conformal inference</li>
+      <li>CRPS and pinball loss</li><li>Rolling-origin backtesting</li><li>Moving-block bootstrap</li>
+      <li>Newsvendor model</li><li>mypy --strict</li><li>ruff</li><li>pytest</li><li>uv</li>
+      <li>GitHub Actions</li><li>Azure Static Web Apps</li>
+    </ul>
+    <details class="disclose">
+      <summary>For the technical reader: the choices that are easy to get wrong</summary>
+      <ul>
+        <li><strong>Conformal is written here, not imported.</strong> With weekly origins, a 14-day forecast's error has not happened yet at the next origin, and a library that assumes it has leaks the future into the interval.</li>
+        <li><strong>The foundation model is scored only after its training data ends.</strong> TimesFM is drawn on its own clean window and never pooled with the models trained here.</li>
+        <li><strong>Every comparison is paired over the same origins</strong>, and the intervals resample whole blocks of weeks, because neighbouring weeks are not independent.</li>
+        <li><strong>Reconciliation moves every simulated future, not only the median</strong>, so a decision taken over the whole city is taken on futures that add up.</li>
+        <li><strong>The decision inputs are a file, not constants.</strong> The two costs and the demand per crew sit in <code>inputs/decision.toml</code>, and every number in the rota moves when they change.</li>
+        <li><strong>The page is served with the headers the host sends</strong>, locally too, so a page that only works without its content security policy is caught before it ships.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section class="section" id="built">
+    <h2>How this was built</h2>
+    <p>
+      I designed this project and made the calls in it: what to forecast, how to score it, and
+      what to do when a model I had planned for did not earn its place. I came to it from years
+      of forecasting health-sector utilisation. Two of my calls show in the results. I gave the
+      neural forecasters a full, fair run, N-HiTS and PatchTST trained on every series and
+      refitted on a schedule, and then left them out, because the numbers said so. And I wrote
+      the conformal intervals myself rather than take them from a library, because a forecast's
+      error is not known until its date arrives, and an interval that assumes otherwise quietly
+      uses the future.
+    </p>
+    <p>
+      I used an AI coding assistant (Claude Code) for implementation and drafting, which is now
+      standard practice in software, data science and machine learning work. Every number on this
+      page can be reproduced from
+      <a href="https://github.com/Peter-A-P/capacity-planning-forecaster">the repository</a> with
+      one command, from public data.
+    </p>
+    <details class="disclose">
+      <summary>Glossary</summary>
+      <dl class="glossary">
+        <dt>Backtest</dt><dd>Forecasting dates that have already happened, using only what was known before each one, and scoring the forecasts against what did happen.</dd>
+        <dt>Forecast origin</dt><dd>The date a forecast is made from. Here there is one a week, and each forecasts the next 14 days.</dd>
+        <dt>Prediction interval</dt><dd>A range a forecast says the outcome will fall in, with a stated chance. A 90 percent interval should contain the outcome nine times in ten.</dd>
+        <dt>Coverage</dt><dd>How often an interval actually contained the outcome. Compared with the nominal level, it says whether the interval kept its promise.</dd>
+        <dt>Conformal prediction</dt><dd>A way of building intervals from a model's own past errors so that they hold as often as they claim, on average over time, as long as tomorrow's errors look like a shuffle of past ones.</dd>
+        <dt>CRPS</dt><dd>Continuous ranked probability score. It scores a whole forecast range against what happened, rewarding ranges that are both close and as narrow as the truth allows. Lower is better.</dd>
+        <dt>Skill</dt><dd>The share of the baseline's loss a model removes. Zero is no better than planning from last week; higher is better.</dd>
+        <dt>Seasonal naive</dt><dd>The baseline: each day forecast as the same weekday one or two weeks earlier.</dd>
+        <dt>Reconciliation (MinT)</dt><dd>Adjusting forecasts made separately for the areas, the boroughs and the city so that they add up, by the smallest change the errors allow.</dd>
+        <dt>Moving-block bootstrap</dt><dd>Estimating an interval by resampling whole runs of consecutive weeks, because neighbouring weeks are not independent.</dd>
+        <dt>Service level</dt><dd>The share of days the crews on shift are enough for the demand.</dd>
+        <dt>Newsvendor rule</dt><dd>The classic rule for choosing a stock level when running short and running over cost different amounts: staff to the point where the two expected costs balance.</dd>
+        <dt>Oracle</dt><dd>A rota that knew each day's demand in advance. It costs nothing, so every method is measured by how far it falls short of it.</dd>
+      </dl>
+    </details>
+  </section>
+
 </main>
 
 <footer class="foot">
   <div class="foot-inner">
     <p>
       Source, method, the full results and every window they were measured on:
-      <a href="https://github.com/Peter-A-P/capacity-planning-forecaster">github.com/Peter-A-P/capacity-planning-forecaster</a>
+      <a href="https://github.com/Peter-A-P/capacity-planning-forecaster">github.com/Peter-A-P/capacity-planning-forecaster</a>.
+      The write-up and the rest of the portfolio:
+      <a href="https://peterparker.ca/projects/capacity-planning-forecaster/">peterparker.ca</a>.
     </p>
     <ul>
       <li>Data: NYC EMS incident dispatch data, published by the City of New York</li>

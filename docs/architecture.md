@@ -14,14 +14,14 @@ The data is twenty-one years of New York City emergency medical dispatch inciden
 open data. It is turned into a daily count for the city, each borough and each dispatch area, 37
 series in all, and checked: not a single day is missing.
 
-Nine forecasting models then go through the same test. They range from the simplest, "same as
-this day last year", through the classic statistical models, a gradient-boosted model, two
-neural networks and a pretrained foundation model used as it comes. At each point in the past,
-each model sees only the history before that point and forecasts a full range of outcomes, not
-just one number. Every forecast is stored.
+Nine forecasting models then go through the same test. They range from the simplest, "the same
+weekday a week or two earlier", through the classic statistical models, a gradient-boosted
+model, two neural networks and a pretrained foundation model used as it comes. At each point in
+the past, each model sees only the history before that point and forecasts a full range of
+outcomes for each day. Every forecast is stored.
 
 The forecasts are scored against what actually happened, with intervals on every score. They are
-then wrapped in ranges that are guaranteed to hold a stated share of the time, adjusted so the
+then wrapped in ranges built to hold a stated share of the time on average, adjusted so the
 areas add up to the boroughs and the boroughs to the city, and finally priced into crews per
 area per day at a chosen service level.
 
@@ -45,9 +45,9 @@ Models are retrained every fourth week on the same schedule for all of them, so 
 get no advantage the expensive ones were denied. Each model forecasts the next 14 days as a full
 range of outcomes, and the forecasts are stored.
 
-The scores then compare each stored forecast with what happened. The main score rewards a
-forecast for being both close and honest about its uncertainty, and every model is compared with
-the simplest one. The 95% intervals come from resampling whole blocks of weeks, because
+The scores then compare each stored forecast with what happened. The main score, CRPS, rewards a
+forecast for being close and for being right about how uncertain it is, and every model is
+compared with the simplest one. The 95% intervals come from resampling whole blocks of weeks, because
 neighbouring weeks are not independent. The foundation model is only scored on dates after its
 own training data ends, so it cannot be scored on history it has already seen.
 
@@ -59,14 +59,15 @@ Where it lives: `headroom.backtest.origins`, `headroom.score.crps`, `headroom.sc
 
 ## From a forecast distribution to crews on shift
 
-![A model's quantiles are wrapped by adaptive conformal intervals so coverage holds through a shift, reconciled across the hierarchy so areas sum to the city, read at a service level, and priced by a newsvendor rule against stated costs into crews; the realised cost is compared with an oracle that knew demand.](architecture/decision.svg)
+![A model's quantiles are wrapped by adaptive conformal intervals, whose coverage holds on average over time, reconciled across the hierarchy so areas sum to the city, read at a service level, and priced by a newsvendor rule against stated costs into crews; the realised cost is compared with an oracle that knew demand.](architecture/decision.svg)
 
 This is what the dashboard's service-level slider does.
 
-A model's forecast for each of the 37 series is wrapped in a range that adapts as it goes, so it
-keeps holding its stated share of the time even when demand shifts suddenly. The simpler fixed
-version of that range stopped holding after March 2020, which is why the adaptive one is used.
-The forecasts are then adjusted so that the areas add up to the boroughs and the boroughs to the
+A model's forecast for each of the 37 series is wrapped in a range that adapts as it goes,
+widening when it starts to miss. Its guarantee holds on average over time, not in any one month,
+and through March 2020 neither the adaptive range nor the simpler fixed one held: the adaptive
+one could not widen past the largest error in its own recent history. The forecasts are then
+adjusted so that the areas add up to the boroughs and the boroughs to the
 city.
 
 A service level, 80, 90 or 95 percent of forecast demand, picks a point in that range. A classic

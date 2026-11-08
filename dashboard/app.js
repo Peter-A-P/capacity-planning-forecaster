@@ -1060,6 +1060,33 @@
     });
     table.appendChild(body);
 
+    var recRows = [];
+    section.rows.forEach(function (row) {
+      row.variants.forEach(function (variant, j) {
+        recRows.push({
+          label: row.level,
+          note: variant.name,
+          estimate: variant.crps_change,
+          cls: j === 0 ? "lv1" : "lv0",
+          extra: [["coverage at " + percent(section.nominal), withInterval(variant.coverage, 3)]]
+        });
+      });
+    });
+    drawIntervalBars(byId("reconciliation-chart"), recRows, {
+      label: "Change in CRPS from reconciling, per level, for each way of reconciling",
+      readout: byId("reconciliation-readout"),
+      prompt: "Point at a bar to read that level off it.",
+      zeroLabel: "the unreconciled forecast",
+      format: function (value) {
+        return Math.abs(value) < 1e-9 ? "0" : signed(value, value % 1 === 0 ? 0 : 1);
+      },
+      value: function (value) { return signed(value, 3); },
+      places: 3
+    });
+    legendInto(byId("reconciliation-legend"), variants.map(function (name, j) {
+      return { label: name, swatch: (j === 0 ? "sw-lv1" : "sw-lv0") + " solid" };
+    }));
+
     byId("reconciliation-lede").textContent =
       "Forecast each area, each borough and the city separately and they will not agree: the " +
       "parts here miss their total by up to " + decimals(section.base_coherence_error, 1) +
@@ -1076,6 +1103,109 @@
       "not have their bad days together, so the city's busiest plausible day is quieter than the " +
       "sum of theirs. Nothing is floored at zero, because that would break the very thing this " +
       "buys: " + percent(section.negative_share, 3) + " of values fall below it.";
+  }
+
+  /* Bars with whiskers, one row each, for the two panels that were tables only. The bar runs
+     from zero to the estimate and the whisker is its 95 percent interval; zero is drawn and
+     named, so a reader sees what the bars are measured from. A readout under the chart reads
+     the row under the pointer or a tap. */
+  function drawIntervalBars(host, rows, options) {
+    clear(host);
+    if (!rows.length) { return; }
+    var margin = { top: 8, right: 76, bottom: 40, left: 236 };
+    var rowHeight = 24;
+    var bar = 13;
+    var inner = WIDTH - margin.left - margin.right;
+    var deep = rows.length * rowHeight;
+    var lo = 0;
+    var hi = 0;
+    rows.forEach(function (row) {
+      var e = row.estimate;
+      lo = Math.min(lo, isNumber(e.low) ? e.low : e.point);
+      hi = Math.max(hi, isNumber(e.high) ? e.high : e.point);
+    });
+    var room = (hi - lo) * 0.06 || 1;
+    if (lo < 0) { lo -= room; }
+    if (hi > 0) { hi += room; }
+    function x(value) { return (value - lo) / (hi - lo) * inner; }
+
+    var root = svg("svg", {
+      viewBox: "0 0 " + WIDTH + " " + (deep + margin.top + margin.bottom),
+      role: "img",
+      "aria-label": options.label
+    });
+    var plot = svg("g", { transform: "translate(" + margin.left + "," + margin.top + ")" });
+    root.appendChild(plot);
+
+    ticks(lo, hi, 5).forEach(function (value) {
+      var at = x(value);
+      if (at < -1 || at > inner + 1) { return; }
+      plot.appendChild(svg("line", { "class": "gridline", x1: at, x2: at, y1: -4, y2: deep }));
+      var tick = svg("text", { "class": "tick", x: at, y: deep + 16, "text-anchor": "middle" });
+      tick.textContent = options.format(value);
+      plot.appendChild(tick);
+    });
+    plot.appendChild(svg("line", { "class": "zero", x1: x(0), x2: x(0), y1: -4, y2: deep }));
+    var zero = svg("text", { "class": "zero-label", x: x(0), y: deep + 31, "text-anchor": "middle" });
+    zero.textContent = options.zeroLabel;
+    plot.appendChild(zero);
+
+    var readout = options.readout;
+    function reset() { readout.textContent = options.prompt; }
+    function show(row) {
+      clear(readout);
+      readout.appendChild(el("span", { "class": "when" }, row.label + (row.note ? ", " + row.note : "")));
+      [["estimate", withInterval(row.estimate, options.places)]].concat(row.extra || [])
+        .forEach(function (pair) {
+          var slot = el("span", { "class": "pair" });
+          slot.appendChild(el("span", { "class": "key" }, pair[0] + " "));
+          slot.appendChild(document.createTextNode(pair[1]));
+          readout.appendChild(slot);
+        });
+    }
+
+    rows.forEach(function (row, i) {
+      var y = i * rowHeight + (rowHeight - bar) / 2;
+      var label = svg("text", {
+        "class": "row-label",
+        x: -13, y: y + bar - 2, "text-anchor": "end"
+      });
+      label.textContent = row.label + (row.note ? ", " + row.note : "");
+      plot.appendChild(label);
+      var catcher = svg("rect", {
+        "class": "catcher", x: 8 - margin.left, y: i * rowHeight,
+        width: inner + margin.left - 8, height: rowHeight, fill: "transparent", tabindex: 0
+      });
+      catcher.addEventListener("pointerenter", function () { show(row); });
+      catcher.addEventListener("pointerdown", function () { show(row); });
+      catcher.addEventListener("focus", function () { show(row); });
+      plot.appendChild(catcher);
+      var e = row.estimate;
+      if (!isNumber(e.point)) { return; }
+      var from = x(Math.min(0, e.point));
+      var to = x(Math.max(0, e.point));
+      plot.appendChild(svg("rect", {
+        "class": "bar " + row.cls, x: from, y: y, width: Math.max(1.5, to - from), height: bar, rx: 3
+      }));
+      var end = to;
+      if (isNumber(e.low) && isNumber(e.high)) {
+        var mid = y + bar / 2;
+        plot.appendChild(svg("line", { "class": "whisker", x1: x(e.low), x2: x(e.high), y1: mid, y2: mid }));
+        [e.low, e.high].forEach(function (edge) {
+          plot.appendChild(svg("line", {
+            "class": "whisker", x1: x(edge), x2: x(edge), y1: y + 2.5, y2: y + bar - 2.5
+          }));
+        });
+        end = Math.max(end, x(e.high));
+      }
+      var value = svg("text", { "class": "bar-value", x: end + 8, y: y + bar - 2.5 });
+      value.textContent = options.value ? options.value(e.point) : decimals(e.point, options.places);
+      plot.appendChild(value);
+    });
+
+    root.addEventListener("pointerleave", reset);
+    reset();
+    host.appendChild(root);
   }
 
   /* The staffing panel -------------------------------------------------------- */
@@ -1126,6 +1256,23 @@
       body.appendChild(line);
     });
     table.appendChild(body);
+
+    drawIntervalBars(byId("staffing-chart"), section.methods.map(function (method) {
+      return {
+        label: method.name,
+        estimate: method.cost[at],
+        cls: method.name === section.reference ? "lv0"
+          : method.name === "Seasonal naive" ? "base" : "lv2",
+        extra: [["units staffed a day", withInterval(method.units[at], 1)]]
+      };
+    }), {
+      label: "Cost a day of being wrong, against an oracle that knew demand, for every method",
+      readout: byId("staffing-readout"),
+      prompt: "Point at a bar to read that method off it.",
+      zeroLabel: "the oracle, which knew each day's demand",
+      format: function (value) { return decimals(value, 0); },
+      places: 2
+    });
 
     var headline = byId("staffing-headline");
     clear(headline);
